@@ -6,6 +6,7 @@ sealed interface GlobalConfig {
     data class ScaleUi(val value: Float?) : GlobalConfig
     data class LinesHeight(val value: LinesHeightType?) : GlobalConfig
     data class PullWithRebase(val value: Boolean) : GlobalConfig
+    data class ToolbarPull(val value: ToolbarPullMode) : GlobalConfig
     data class PushWithLease(val value: Boolean) : GlobalConfig
     data class FastForwardMerge(val value: Boolean) : GlobalConfig
     data class AutoStashOnMerge(val value: Boolean) : GlobalConfig

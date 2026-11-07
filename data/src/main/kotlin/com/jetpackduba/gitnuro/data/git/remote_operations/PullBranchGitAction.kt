@@ -59,6 +59,13 @@ class PullBranchGitAction @Inject constructor(
                     .setTransportConfigCallback { this.handleTransport(it) }
                     .setRebase(pullWithRebase)
                     .run {
+                        if (pullType == PullType.FAST_FORWARD_ONLY) {
+                            setFastForward(org.eclipse.jgit.api.MergeCommand.FastForwardMode.FF_ONLY)
+                        } else {
+                            this
+                        }
+                    }
+                    .run {
                         if (remoteBranch != null) {
                             this.setRemote(remoteBranch.remoteName)
                                 .setRemoteBranchName(remoteBranch.simpleName)

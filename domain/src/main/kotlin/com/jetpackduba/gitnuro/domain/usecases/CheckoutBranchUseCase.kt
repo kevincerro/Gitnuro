@@ -12,7 +12,7 @@ class CheckoutBranchUseCase @Inject constructor(
 ) {
     operator fun invoke(branch: Branch) {
         useCaseExecutor.executeLaunch(
-            taskType = TaskType.CheckoutBranch,
+            taskType = TaskType.CheckoutBranch(branch.simpleName),
             dataToRefresh = arrayOf(DataToRefresh.ALL),
         ) { repositoryPath ->
             checkoutBranchGitAction(repositoryPath, branch)

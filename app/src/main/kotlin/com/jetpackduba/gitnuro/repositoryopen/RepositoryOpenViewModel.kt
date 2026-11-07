@@ -137,6 +137,9 @@ class RepositoryOpenViewModel @Inject constructor(
     private val fetchAllUseCase: FetchAllBranchUseCase,
     private val stashChangesUseCase: StashChangesUseCase,
     private val openRepositoryInTerminalGitAction: OpenRepositoryInTerminalGitAction,
+    private val toolbarGitActions: ToolbarGitActions,
+    private val commitHistoryActions: CommitHistoryActions,
+    private val resetBranchUseCase: ResetBranchUseCase,
 ) : IVerticalSplitPaneConfig by verticalSplitPaneConfig,
     TabViewModel() {
     val completedTasks = repositoryStateRepository.completedTasks
@@ -145,6 +148,25 @@ class RepositoryOpenViewModel @Inject constructor(
         .stateIn(false)
 
     val isPullWithRebaseDefault = settings.pullWithRebase
+    val toolbarPullMode = settings.toolbarPullMode
+
+    fun setToolbarPullMode(mode: ToolbarPullMode) {
+        viewModelScope.launch {
+            settings.setConfiguration(GlobalConfig.ToolbarPull(mode))
+        }
+    }
+
+    /** What the toolbar's Pull button does, depending on the mode chosen in its dropdown */
+    fun runToolbarPull() {
+        viewModelScope.launch {
+            when (toolbarPullMode.first()) {
+                ToolbarPullMode.FETCH_ALL -> fetchAll()
+                ToolbarPullMode.PULL_FAST_FORWARD_IF_POSSIBLE -> pull(PullType.MERGE)
+                ToolbarPullMode.PULL_FAST_FORWARD_ONLY -> pull(PullType.FAST_FORWARD_ONLY)
+                ToolbarPullMode.PULL_REBASE -> pull(PullType.REBASE)
+            }
+        }
+    }
 
     val lastLoadedTabs = recentRepositoriesRepository
         .recentRepositoriesPaths
@@ -195,17 +217,18 @@ class RepositoryOpenViewModel @Inject constructor(
     val isExpandedBranches: StateFlow<Boolean>
         field = MutableStateFlow<Boolean>(true)
 
+    // Like GitKraken: Local and Remote expanded, the sections at the bottom collapsed
     val isExpandedRemotes: StateFlow<Boolean>
-        field = MutableStateFlow<Boolean>(false)
+        field = MutableStateFlow<Boolean>(true)
 
     val isExpandedStashes: StateFlow<Boolean>
-        field = MutableStateFlow<Boolean>(true)
+        field = MutableStateFlow<Boolean>(false)
 
     val isExpandedTags: StateFlow<Boolean>
         field = MutableStateFlow<Boolean>(false)
 
     val isExpandedSubmodules: StateFlow<Boolean>
-        field = MutableStateFlow<Boolean>(true)
+        field = MutableStateFlow<Boolean>(false)
 
     val requestTabFocusFlow: SharedFlow<Unit>
         field = MutableSharedFlow<Unit>()
@@ -414,6 +437,7 @@ class RepositoryOpenViewModel @Inject constructor(
     )
 
     val commitChangesState = commitChangesViewModelExtender.commitChangesState
+    val commitSignature = commitChangesViewModelExtender.commitSignature
 
     val statusState = statusViewModelExtender.statusState
 
@@ -579,11 +603,53 @@ class RepositoryOpenViewModel @Inject constructor(
 
     fun pull(pullType: PullType) = pullBranch(pullType)
 
-    fun push(force: Boolean, pushTags: Boolean) = pushBranchUseCase(force, pushTags)
+    /**
+     * Set when a push would be rejected because the remote has commits that the local branch doesn't have.
+     * The UI then asks to pull or force push, like GitKraken.
+     */
+    val pushBehindState: StateFlow<PushBehindState?>
+        field = MutableStateFlow<PushBehindState?>(null)
+
+    fun push(force: Boolean, pushTags: Boolean) {
+        if (force) {
+            pushBehindState.value = null
+            pushBranchUseCase(force = true, pushTags = pushTags)
+            return
+        }
+
+        viewModelScope.launch {
+            val behindState = toolbarGitActions.pushBehindState()
+
+            if (behindState != null) {
+                pushBehindState.value = behindState
+            } else {
+                pushBranchUseCase(force = false, pushTags = pushTags)
+            }
+        }
+    }
+
+    fun dismissPushBehind() {
+        pushBehindState.value = null
+    }
+
+    /** "Pull" option of the push rejected banner: like the toolbar's pull, but never just a fetch */
+    fun pullFromPushBehind() {
+        pushBehindState.value = null
+
+        viewModelScope.launch {
+            when (toolbarPullMode.first()) {
+                ToolbarPullMode.PULL_FAST_FORWARD_ONLY -> pull(PullType.FAST_FORWARD_ONLY)
+                ToolbarPullMode.PULL_REBASE -> pull(PullType.REBASE)
+                else -> pull(PullType.MERGE)
+            }
+        }
+    }
 
     fun fetchAll() = fetchAllUseCase()
 
     fun stash() = stashChangesUseCase(null)
+
+    fun stashWithMessage(message: String) = stashChangesUseCase(message.ifBlank { null })
 
     fun popStash() = popStashUseCase(null)
 
@@ -663,6 +729,46 @@ class RepositoryOpenViewModel @Inject constructor(
     }
 
     val update: StateFlow<Update?> = updatesRepository.hasUpdatesFlow.stateIn(null)
+
+    /** Commits ahead/behind the upstream of each local branch, recomputed when the branches change */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val branchesAheadBehind: StateFlow<Map<String, AheadBehind>> = combine(branchesState, remoteState) { _, _ -> }
+        .mapLatest { toolbarGitActions.branchesAheadBehind() }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptyMap())
+
+    /** Emits when the side panel filter should get the focus (Cmd/Ctrl + Option/Alt + F) */
+    val focusSidePanelFilter: SharedFlow<Unit>
+        field = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    fun requestSidePanelFilterFocus() {
+        focusSidePanelFilter.tryEmit(Unit)
+    }
+
+    /**
+     * What Undo/Redo would do. Recomputed whenever the log is refreshed (after any operation that moves HEAD).
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val undoRedoState: StateFlow<UndoRedoState> = logState
+        .mapLatest { toolbarGitActions.undoRedoState() }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, UndoRedoState())
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val isLfsRepository: StateFlow<Boolean> = logState
+        .mapLatest { toolbarGitActions.isLfsRepository() }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, false)
+
+    fun undo() {
+        undoRedoState.value.undo?.let { toolbarGitActions.undo(it) }
+    }
+
+    fun redo() {
+        undoRedoState.value.redo?.let { toolbarGitActions.redo(it) }
+    }
+
+    fun runLfs(operation: LfsOperation) {
+        toolbarGitActions.runLfs(operation)
+    }
 
     fun blameFile(filePath: String) {
         viewModelScope.launch {
@@ -777,6 +883,13 @@ class RepositoryOpenViewModel @Inject constructor(
             LogAction.UncommittedChangesSelected -> selectUncommittedChanges()
             LogAction.ShowStatusAmending -> selectUncommittedChanges(forceAmend = true)
             is LogAction.SearchValueChange -> onSearchValueChanged(action.filter)
+            is LogAction.ResetToCommit -> resetBranchUseCase(action.commit, action.resetType)
+            is LogAction.CreateWorktree -> commitHistoryActions.createWorktree(action.commit, action.path)
+            is LogAction.EditCommitMessage -> commitHistoryActions.editMessage(action.commit, action.message)
+            is LogAction.DropCommit -> commitHistoryActions.dropCommit(action.commit)
+            is LogAction.MoveCommit -> commitHistoryActions.moveCommit(action.commit, action.up)
+            is LogAction.CreateAnnotatedTag ->
+                commitHistoryActions.createAnnotatedTag(action.commit, action.name, action.message)
         }
     }
 

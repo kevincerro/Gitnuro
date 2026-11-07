@@ -11,6 +11,7 @@ plugins {    // Apply the shared build logic from a convention plugin.
     //application
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.compose)
+    alias(libs.plugins.compose.hot.reload)
     alias(libs.plugins.ksp)
     alias(libs.plugins.kotlinx.serialization)
 }
@@ -118,6 +119,17 @@ enum class OS {
     MAC
 }
 
+// Compose Hot Reload provisions a JetBrains Runtime 21 by default, but the project is compiled for Java 25.
+// Run the hot reload tasks with a JetBrains Runtime matching the project's Java version instead.
+tasks.withType<JavaExec>().matching { it.name.startsWith("hot") }.configureEach {
+    javaLauncher.set(
+        javaToolchains.launcherFor {
+            languageVersion.set(javaLanguageVersion)
+            vendor.set(JvmVendorSpec.JETBRAINS)
+        }
+    )
+}
+
 tasks.test {
     useJUnitPlatform()
     testLogging {
@@ -147,6 +159,9 @@ compose.desktop {
         }
 
         nativeDistributions {
+            // Other processes of the same user can't attach to the packaged app's JVM (e.g. to dump its memory)
+            val hardeningJvmArgs = arrayOf("-XX:+DisableAttachMechanism")
+
             includeAllModules = true
             packageName = projectName
             version = projectVersionSimplified
@@ -154,12 +169,18 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg)
 
             windows {
+                jvmArgs(*hardeningJvmArgs)
                 iconFile.set(project.file("../icons/icon.ico"))
+            }
+
+            linux {
+                jvmArgs(*hardeningJvmArgs)
             }
 
             macOS {
                 jvmArgs(
-                    "-Dapple.awt.application.appearance=system"
+                    "-Dapple.awt.application.appearance=system",
+                    *hardeningJvmArgs,
                 )
                 iconFile.set(project.file("../icons/icon.icns"))
                 bundleID = appPackageName

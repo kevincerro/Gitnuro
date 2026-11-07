@@ -1,5 +1,8 @@
 package com.jetpackduba.gitnuro.repositoryopen
 
+import androidx.compose.ui.input.key.*
+import com.jetpackduba.gitnuro.ui.PushBehindBanner
+import com.jetpackduba.gitnuro.domain.models.ToolbarPullMode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
@@ -59,8 +62,16 @@ fun RepositoryOpenPage(
             .focusable(true)
             .onPreviewKeyEvent {
                 when {
+                    // Cmd/Ctrl + Option/Alt + F focuses the side panel filter, like GitKraken
+                    it.type == KeyEventType.KeyDown && it.key == Key.F && it.isAltPressed &&
+                            (it.isMetaPressed || it.isCtrlPressed) -> {
+                        repositoryOpenViewModel.requestSidePanelFilterFocus()
+                        true
+                    }
+
                     it.matchesBinding(KeybindingOption.PULL) -> {
-                        repositoryOpenViewModel.pull(PullType.DEFAULT)
+                        // Same as clicking the toolbar's Pull button
+                        repositoryOpenViewModel.runToolbarPull()
                         true
                     }
 
@@ -113,13 +124,27 @@ fun RepositoryOpenPage(
             LocalTabFocusRequester provides focusRequester
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Menu(
+                val pushBehindState by repositoryOpenViewModel.pushBehindState.collectAsState()
+                val toolbarPullMode by repositoryOpenViewModel.toolbarPullMode
+                    .collectAsState(ToolbarPullMode.PULL_FAST_FORWARD_IF_POSSIBLE)
+                val currentPushBehind = pushBehindState
+
+                if (currentPushBehind != null) {
+                    PushBehindBanner(
+                        state = currentPushBehind,
+                        pullTitle = when (toolbarPullMode) {
+                            ToolbarPullMode.PULL_FAST_FORWARD_ONLY -> "Pull (fast-forward only)"
+                            ToolbarPullMode.PULL_REBASE -> "Pull (rebase)"
+                            else -> "Pull (fast-forward if possible)"
+                        },
+                        onPull = { repositoryOpenViewModel.pullFromPushBehind() },
+                        onForcePush = { repositoryOpenViewModel.push(force = true, pushTags = false) },
+                        onCancel = { repositoryOpenViewModel.dismissPushBehind() },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else Menu(
                     viewModel = repositoryOpenViewModel,
-                    modifier = Modifier
-                        .padding(
-                            vertical = 4.dp
-                        )
-                        .fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(),
                     onCreateBranch = { onNavigate(Screen.BranchCreate(null)) },
                     onStashWithMessage = { onNavigate(Screen.StashWithMessage) },
                     onOpenAnotherRepository = { onOpenAnotherRepository(it) },
@@ -240,6 +265,11 @@ fun RepoContent(
     }
 }
 
+/**
+ * Minimum width of the right panel (commit details / uncommitted changes) so its content is never cramped.
+ */
+private const val MIN_THIRD_PANE_WIDTH = 380f
+
 @Composable
 fun MainContentView(
     viewModel: RepositoryOpenViewModel,
@@ -267,15 +297,45 @@ fun MainContentView(
         }
     }
 
+    val isRebaseAwaitingInteraction = rebaseInteractiveState is RebaseInteractiveState.AwaitingInteraction
+    val isBlameExpanded = blameState is BlameState.Loaded && !blameState.isMinimized
+
+    // When a diff replaces the graph, the side panel collapses into a rail with a button to go back to the graph
+    val isDiffShown = diffSelected?.entries?.count() == 1 && !isBlameExpanded
+
+    // The user can also collapse the side panel manually into the same rail
+    var isSidePanelCollapsed by remember(viewModel) { mutableStateOf(false) }
+    val showRail = isDiffShown || isSidePanelCollapsed
+
     TripleVerticalSplitPanel(
         modifier = Modifier.fillMaxSize(),
-        firstWidth = if (rebaseInteractiveState is RebaseInteractiveState.AwaitingInteraction) 0f else firstWidth,
-        thirdWidth = thirdWidth,
+        firstWidth = when {
+            isRebaseAwaitingInteraction -> 0f
+            showRail -> SIDE_PANEL_RAIL_WIDTH
+            else -> firstWidth
+        },
+        thirdWidth = thirdWidth.coerceAtLeast(MIN_THIRD_PANE_WIDTH),
         first = {
-            SidePanel(
-                viewModel = viewModel,
-                onNavigate = onNavigate,
-            )
+            if (showRail) {
+                SidePanelRail(
+                    viewModel = viewModel,
+                    // With a diff open, the button goes back to the graph. Otherwise it expands the panel again
+                    buttonTooltip = if (isDiffShown) "Back to the graph" else "Expand sidebar",
+                    onButtonClick = {
+                        if (isDiffShown) viewModel.clearDiff() else isSidePanelCollapsed = false
+                    },
+                    onEntryClick = {
+                        isSidePanelCollapsed = false
+                        if (isDiffShown) viewModel.clearDiff()
+                    },
+                )
+            } else {
+                SidePanel(
+                    viewModel = viewModel,
+                    onNavigate = onNavigate,
+                    onCollapse = { isSidePanelCollapsed = true },
+                )
+            }
         },
         second = {
             Box(
@@ -352,9 +412,13 @@ fun MainContentView(
                         commitChangesState = commitChangesState,
                     )
                 } else if (rebaseInteractiveState !is RebaseInteractiveState.AwaitingInteraction) {
+                    val branchesState by viewModel.branchesState.collectAsState()
+
                     StatusPane(
                         statusState = statusState,
+                        currentBranchName = branchesState.currentBranch?.simpleName,
                         onAction = { viewModel.onAction(it) },
+                        onStashWithMessage = { viewModel.stashWithMessage(it) },
                         onBlameFile = { viewModel.blameFile(it) },
                         onHistoryFile = { viewModel.fileHistory(it) }
                     )
@@ -368,7 +432,7 @@ fun MainContentView(
         onFirstSizeChange = {
             val newWidth = firstWidth + it / density
 
-            if (newWidth > 150 && rebaseInteractiveState !is RebaseInteractiveState.AwaitingInteraction) {
+            if (newWidth > 150 && !isRebaseAwaitingInteraction && !isDiffShown) {
                 firstWidth = newWidth
                 viewModel.setFirstPaneWidth(newWidth)
             }
@@ -379,9 +443,9 @@ fun MainContentView(
             }
         },
         onThirdSizeChange = {
-            val newWidth = thirdWidth - it / density
+            val newWidth = thirdWidth.coerceAtLeast(MIN_THIRD_PANE_WIDTH) - it / density
 
-            if (newWidth > 150) {
+            if (newWidth >= MIN_THIRD_PANE_WIDTH) {
                 thirdWidth = newWidth
                 viewModel.setThirdPaneWidth(newWidth)
             }

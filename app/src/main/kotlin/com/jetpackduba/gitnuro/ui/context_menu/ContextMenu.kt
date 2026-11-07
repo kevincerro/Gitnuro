@@ -1,6 +1,8 @@
 package com.jetpackduba.gitnuro.ui.context_menu
 
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +31,7 @@ import androidx.compose.ui.input.InputModeManager
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.LocalLocalization
@@ -81,11 +84,12 @@ fun DropDownMenuText(
     enabled: Boolean = true,
     showIcons: Boolean = true,
     currentValue: String,
+    width: Dp = 180.dp,
     items: () -> List<ContextMenuElement>,
 ) {
     DropDownMenu(enabled, showIcons, items) {
         Row(
-            modifier = Modifier.width(180.dp)
+            modifier = Modifier.width(width)
                 .border(
                     width = 2.dp,
                     color = MaterialTheme.colors.onBackground.copy(alpha = 0.1F),
@@ -254,28 +258,7 @@ fun showPopup(
 
         Box(
             modifier = Modifier
-                .dropShadow(
-                    shape = RoundedCornerShape(4.dp),
-                    shadow = Shadow(
-                        radius = 5.dp,
-                        spread = 6.dp,
-                        color = Color(0x20000000),
-                    )
-                )
-                .clip(MaterialTheme.shapes.small)
-                .background(MaterialTheme.colors.background)
-                .width(IntrinsicSize.Max)
-                .widthIn(min = 180.dp)
-                .run {
-                    if (MaterialTheme.colors.isDark) {
-                        this.border(
-                            2.dp,
-                            MaterialTheme.colors.onBackground.copy(alpha = 0.2f),
-                            shape = MaterialTheme.shapes.small
-                        )
-                    } else
-                        this
-                }
+                .menuSurface()
                 .focusRequester(focusRequester)
                 .focusable()
                 .onPreviewKeyEvent { keyEvent ->
@@ -286,19 +269,87 @@ fun showPopup(
                         false
                 },
         ) {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                for (item in contextMenuElements) {
-                    when (item) {
-                        is ContextMenuElement.ContextTextEntry -> TextEntry(
-                            showIcons,
-                            item,
-                            onDismissRequest = onDismissRequest
-                        )
+            MenuItemsColumn(
+                showIcons = showIcons,
+                contextMenuElements = contextMenuElements,
+                onDismissRequest = onDismissRequest,
+            )
+        }
+    }
+}
 
-                        ContextMenuElement.ContextSeparator -> Separator()
-                    }
+@Composable
+private fun Modifier.menuSurface(): Modifier {
+    return this
+        .dropShadow(
+            shape = RoundedCornerShape(6.dp),
+            shadow = Shadow(
+                radius = 5.dp,
+                spread = 6.dp,
+                color = Color(0x20000000),
+            )
+        )
+        .clip(RoundedCornerShape(6.dp))
+        .background(MaterialTheme.colors.background)
+        .width(IntrinsicSize.Max)
+        .widthIn(min = 180.dp)
+        .run {
+            if (MaterialTheme.colors.isDark) {
+                this.border(
+                    1.dp,
+                    MaterialTheme.colors.onBackground.copy(alpha = 0.2f),
+                    shape = RoundedCornerShape(6.dp)
+                )
+            } else
+                this
+        }
+}
 
-                }
+@Composable
+private fun MenuItemsColumn(
+    showIcons: Boolean,
+    contextMenuElements: List<ContextMenuElement>,
+    onDismissRequest: () -> Unit,
+) {
+    // Only reserve space for icons when at least one entry has one
+    val iconsVisible = showIcons && contextMenuElements.any {
+        (it is ContextMenuElement.ContextTextEntry && it.icon != null) ||
+                (it is ContextMenuElement.ContextSubmenu && it.icon != null)
+    }
+    var openSubmenuIndex by remember(contextMenuElements) { mutableStateOf<Int?>(null) }
+
+    Column(
+        modifier = Modifier
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 4.dp)
+    ) {
+        contextMenuElements.forEachIndexed { index, item ->
+            when (item) {
+                is ContextMenuElement.ContextTextEntry -> TextEntry(
+                    iconsVisible,
+                    item,
+                    onDismissRequest = onDismissRequest,
+                    onHovered = { openSubmenuIndex = null },
+                )
+
+                is ContextMenuElement.ContextSubmenu -> SubmenuEntry(
+                    showIcons = iconsVisible,
+                    submenu = item,
+                    isOpen = openSubmenuIndex == index,
+                    onOpen = { openSubmenuIndex = index },
+                    onClose = { if (openSubmenuIndex == index) openSubmenuIndex = null },
+                    onDismissRequest = onDismissRequest,
+                )
+
+                ContextMenuElement.ContextSeparator -> Separator()
+                is ContextMenuElement.ContextHint -> Text(
+                    text = item.text,
+                    style = MaterialTheme.typography.body2,
+                    color = MaterialTheme.colors.onBackgroundSecondary,
+                    modifier = Modifier
+                        .widthIn(max = 300.dp)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
             }
         }
     }
@@ -308,29 +359,35 @@ fun showPopup(
 fun Separator() {
     Box(
         modifier = Modifier
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .padding(horizontal = 10.dp, vertical = 4.dp)
             .fillMaxWidth()
-            .height(2.dp)
-            .background(MaterialTheme.colors.onBackground.copy(alpha = 0.2f))
+            .height(1.dp)
+            .background(MaterialTheme.colors.onBackground.copy(alpha = 0.15f))
     )
 }
 
 @Composable
-fun TextEntry(
+private fun MenuEntryRow(
     showIcons: Boolean,
-    contextTextEntry: ContextMenuElement.ContextTextEntry,
-    onDismissRequest: () -> Unit,
+    icon: @Composable (() -> Painter)?,
+    label: String,
+    isHighlighted: Boolean,
+    interactionSource: MutableInteractionSource,
+    onClick: () -> Unit,
+    trailing: @Composable (Color) -> Unit = {},
 ) {
-    val icon = contextTextEntry.icon
+    val contentColor = if (isHighlighted) Color.White else MaterialTheme.colors.onBackground
 
     Row(
         modifier = Modifier
-            .clickable {
-                onDismissRequest()
-                contextTextEntry.onClick()
-            }
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(if (isHighlighted) MaterialTheme.colors.primary else Color.Transparent)
+            .hoverable(interactionSource)
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .pointerHoverIcon(PointerIcon.Default)
-            .padding(horizontal = if (showIcons) 8.dp else 12.dp, vertical = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (showIcons) {
@@ -344,17 +401,122 @@ fun TextEntry(
                         painter = icon(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
-                        tint = (MaterialTheme.colors.onBackgroundSecondary.copy(alpha = 0.8f))
+                        tint = if (isHighlighted) contentColor else MaterialTheme.colors.onBackgroundSecondary.copy(alpha = 0.8f)
                     )
                 }
             }
         }
 
         Text(
-            contextTextEntry.composableLabel(),
+            label,
             style = MaterialTheme.typography.body2,
-            modifier = Modifier.fillMaxWidth(),
+            color = contentColor,
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
         )
+
+        trailing(contentColor)
+    }
+}
+
+@Composable
+fun TextEntry(
+    showIcons: Boolean,
+    contextTextEntry: ContextMenuElement.ContextTextEntry,
+    onDismissRequest: () -> Unit,
+    onHovered: () -> Unit = {},
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    LaunchedEffect(isHovered) {
+        if (isHovered) onHovered()
+    }
+
+    MenuEntryRow(
+        showIcons = showIcons,
+        icon = contextTextEntry.icon,
+        label = contextTextEntry.composableLabel(),
+        isHighlighted = isHovered,
+        interactionSource = interactionSource,
+        onClick = {
+            onDismissRequest()
+            contextTextEntry.onClick()
+        },
+    )
+}
+
+@Composable
+private fun SubmenuEntry(
+    showIcons: Boolean,
+    submenu: ContextMenuElement.ContextSubmenu,
+    isOpen: Boolean,
+    onOpen: () -> Unit,
+    onClose: () -> Unit,
+    onDismissRequest: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    val density = LocalDensity.current
+
+    LaunchedEffect(isHovered) {
+        if (isHovered) onOpen()
+    }
+
+    Box {
+        MenuEntryRow(
+            showIcons = showIcons,
+            icon = submenu.icon,
+            label = submenu.composableLabel(),
+            isHighlighted = isHovered || isOpen,
+            interactionSource = interactionSource,
+            onClick = onOpen,
+            trailing = { color ->
+                Icon(
+                    painter = painterResource(Res.drawable.chevron_right),
+                    contentDescription = null,
+                    modifier = Modifier.padding(start = 16.dp).size(14.dp),
+                    tint = color,
+                )
+            },
+        )
+
+        if (isOpen) {
+            val verticalPaddingPx = with(density) { 4.dp.roundToPx() }
+
+            Popup(
+                properties = PopupProperties(focusable = false),
+                onDismissRequest = onClose,
+                popupPositionProvider = object : PopupPositionProvider {
+                    override fun calculatePosition(
+                        anchorBounds: IntRect,
+                        windowSize: IntSize,
+                        layoutDirection: LayoutDirection,
+                        popupContentSize: IntSize,
+                    ): IntOffset {
+                        val x = if (anchorBounds.right + popupContentSize.width <= windowSize.width) {
+                            anchorBounds.right
+                        } else {
+                            (anchorBounds.left - popupContentSize.width).coerceAtLeast(0)
+                        }
+
+                        val y = (anchorBounds.top - verticalPaddingPx)
+                            .coerceAtMost(windowSize.height - popupContentSize.height)
+                            .coerceAtLeast(0)
+
+                        return IntOffset(x, y)
+                    }
+                },
+            ) {
+                Box(modifier = Modifier.menuSurface()) {
+                    MenuItemsColumn(
+                        showIcons = showIcons,
+                        contextMenuElements = submenu.items,
+                        onDismissRequest = onDismissRequest,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -379,6 +541,15 @@ sealed class ContextMenuElement(
             onClick,
         )
     }
+
+    class ContextSubmenu(
+        val composableLabel: @Composable (() -> String),
+        val icon: @Composable (() -> Painter)? = null,
+        val items: List<ContextMenuElement>,
+    ) : ContextMenuElement("", {})
+
+    /** Non clickable explanatory text */
+    class ContextHint(val text: String) : ContextMenuElement(text, {})
 
     object ContextSeparator : ContextMenuElement("", {})
 }
@@ -512,12 +683,27 @@ class AppContextMenuRepresentation : ContextMenuRepresentation {
                             )
 
                             is ContextMenuElement.ContextSeparator -> Separator()
+                            else -> {}
                         }
                     }
                 }
             }
         }
     }
+}
+
+fun MutableList<ContextMenuElement>.addSubmenu(
+    composableLabel: @Composable (() -> String),
+    icon: @Composable (() -> Painter)? = null,
+    items: List<ContextMenuElement>,
+) {
+    this.add(
+        ContextMenuElement.ContextSubmenu(
+            composableLabel = composableLabel,
+            icon = icon,
+            items = items,
+        )
+    )
 }
 
 fun MutableList<ContextMenuElement>.addContextMenu(

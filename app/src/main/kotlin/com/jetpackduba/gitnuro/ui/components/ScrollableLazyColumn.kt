@@ -12,6 +12,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.material.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -24,13 +28,17 @@ fun ScrollableLazyColumn(
     state: LazyListState = rememberLazyListState(),
     content: LazyListScope.() -> Unit,
 ) {
+    val pointerPosition = remember { mutableStateOf<Offset?>(null) }
+
     Box(
-        modifier = modifier,
+        modifier = modifier.trackListPointer(pointerPosition),
     ) {
-        LazyColumn(
-            state = state,
-            content = content
-        )
+        CompositionLocalProvider(LocalListPointerPosition provides pointerPosition) {
+            LazyColumn(
+                state = state,
+                content = content
+            )
+        }
         VerticalScrollbar(
             modifier = Modifier
                 .align(Alignment.CenterEnd)

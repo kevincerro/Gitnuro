@@ -8,6 +8,7 @@ import com.jetpackduba.gitnuro.common.OS
 import com.jetpackduba.gitnuro.common.currentOs
 import com.jetpackduba.gitnuro.common.extensions.nullIf
 import com.jetpackduba.gitnuro.domain.errors.Either
+import com.jetpackduba.gitnuro.domain.interfaces.IGetWorktreePathGitAction
 import com.jetpackduba.gitnuro.domain.models.*
 import com.jetpackduba.gitnuro.domain.repositories.CloseableView
 import com.jetpackduba.gitnuro.domain.repositories.RepositoryDataRepository
@@ -19,6 +20,7 @@ import com.jetpackduba.gitnuro.ui.CommitAuthorRequestHolder
 import com.jetpackduba.gitnuro.ui.status.*
 import com.jetpackduba.gitnuro.ui.toUiDataState
 import com.jetpackduba.gitnuro.ui.tree_files.TreeItem
+import com.jetpackduba.gitnuro.ui.tree_files.allDirectoriesOf
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
@@ -43,6 +45,7 @@ class StatusViewModelExtender @AssistedInject constructor(
     private val continueRebaseUseCase: ContinueRebaseUseCase,
     private val skipRebaseUseCase: SkipRebaseUseCase,
     private val doCommitUseCase: DoCommitUseCase,
+    private val pushBranchUseCase: PushBranchUseCase,
     private val getAuthorUseCase: GetAuthorUseCase,
     private val saveAuthorUseCase: SaveAuthorUseCase,
     private val appSettings: GlobalSettingsService,
@@ -52,6 +55,8 @@ class StatusViewModelExtender @AssistedInject constructor(
     private val persistCommitMessageUseCase: PersistCommitMessageUseCase,
     private val repositoryDataRepository: RepositoryDataRepository,
     private val commitAuthorRequestHolder: CommitAuthorRequestHolder,
+    private val statusFileActions: StatusFileActions,
+    private val getWorktreePathGitAction: IGetWorktreePathGitAction,
     @Assisted private val viewModelScope: CoroutineScope,
     @Assisted private val showAsTree: Flow<Boolean>,
     @Assisted private val diffSelected: StateFlow<DiffSelected?>,
@@ -96,6 +101,7 @@ class StatusViewModelExtender @AssistedInject constructor(
         field = MutableStateFlow(TextFieldValue(""))
 
     private val treeContractedDirectories = MutableStateFlow(emptyList<String>())
+    private val sortDescending = MutableStateFlow(false)
 
 
     val swapUncommittedChanges = appSettings.swapStatusPanes
@@ -183,11 +189,17 @@ class StatusViewModelExtender @AssistedInject constructor(
         .stateIn(emptyList())
 
 
+    /**
+     * Working tree of the repository (the selection state holds the .git directory)
+     */
     private val repositoryPath = repositoryDataRepository
         .repositorySelectionState
         .map {
             if (it is RepositorySelectionState.Open) {
-                it.path
+                when (val worktree = getWorktreePathGitAction(it.path)) {
+                    is Either.Ok -> worktree.value
+                    is Either.Err -> it.path
+                }
             } else {
                 null
             }
@@ -200,6 +212,7 @@ class StatusViewModelExtender @AssistedInject constructor(
         showSearchUnstaged,
         searchFilterUnstaged,
         showAsTree,
+        sortDescending,
         treeContractedDirectories,
         swapUncommittedChanges,
         isAmend,
@@ -275,10 +288,14 @@ class StatusViewModelExtender @AssistedInject constructor(
             }
         }
 
-        is StatusAction.Reset -> when (action.statusEntry.entryType) {
-            EntryType.STAGED -> discardStaged(listOf(action.statusEntry))
-            EntryType.UNSTAGED -> discardUnstaged(listOf(action.statusEntry))
+        is StatusAction.Reset -> when {
+            action.statusEntry.entryType == EntryType.STAGED -> discardStaged(listOf(action.statusEntry))
+            // Untracked files have nothing to restore, discarding them means deleting them
+            action.statusEntry.statusType == StatusType.ADDED -> deleteFile(action.statusEntry)
+            else -> discardUnstaged(listOf(action.statusEntry))
         }
+
+        StatusAction.DiscardAll -> statusFileActions.discardAll()
 
         is StatusAction.AllEntriesAction -> when (action.entryType) {
             EntryType.STAGED -> unstageAll()
@@ -292,6 +309,14 @@ class StatusViewModelExtender @AssistedInject constructor(
         }
 
         is StatusAction.OpenInFolder -> onOpenFileInFolder(action.path)
+        is StatusAction.IgnoreFile -> statusFileActions.ignoreFile(action.statusEntry)
+        is StatusAction.IgnoreExtension -> statusFileActions.ignoreExtension(action.extension)
+        is StatusAction.StashFile -> statusFileActions.stashFile(action.statusEntry)
+        is StatusAction.OpenInDiffTool -> statusFileActions.openInDiffTool(action.statusEntry)
+        is StatusAction.OpenInExternalEditor -> statusFileActions.openInExternalEditor(action.statusEntry)
+        is StatusAction.OpenInDefaultProgram -> statusFileActions.openInDefaultProgram(action.statusEntry)
+        is StatusAction.ShowInFileManager -> statusFileActions.showInFileManager(action.statusEntry)
+        is StatusAction.CreatePatch -> statusFileActions.createPatch(action.statusEntry)
         is StatusAction.SearchFilterChanged -> when (action.entryType) {
             EntryType.STAGED -> onSearchFilterChangedStaged(action.filter)
             EntryType.UNSTAGED -> onSearchFilterChangedUnstaged(action.filter)
@@ -307,6 +332,9 @@ class StatusViewModelExtender @AssistedInject constructor(
         )
 
         StatusAction.ToggleShowAsTree -> onAlternateShowAsTree()
+        StatusAction.ToggleSortOrder -> sortDescending.value = !sortDescending.value
+        StatusAction.ExpandAllDirectories -> treeContractedDirectories.value = emptyList()
+        StatusAction.CollapseAllDirectories -> collapseAllDirectories()
         is StatusAction.TreeDirectoryToggle -> toggleTreeDirectoryVisibility(action.path)
         is StatusAction.DiscardSelected -> when (action.entryType) {
             EntryType.STAGED -> discardSelectedStaged()
@@ -321,7 +349,7 @@ class StatusViewModelExtender @AssistedInject constructor(
         StatusAction.AbortRebase -> abortRebase()
         StatusAction.AddStagedSearchToCloseableView -> addStagedSearchToCloseableView()
         StatusAction.AddUnstagedSearchToCloseableView -> addUnstagedSearchToCloseableView()
-        is StatusAction.Commit -> commit(action.message)
+        is StatusAction.Commit -> commit(action.message, action.pushAfterCommit)
         is StatusAction.ContinueRebase -> continueRebase(action.message)
         StatusAction.ResetRepositoryState -> resetRepoState()
         is StatusAction.SearchFilterToggledStaged -> searchFilterToggledStaged()
@@ -566,6 +594,13 @@ class StatusViewModelExtender @AssistedInject constructor(
         removeCloseableView(view)
     }
 
+    private fun collapseAllDirectories() = viewModelScope.launch {
+        val status = repositoryDataRepository.status.first().dataOrNull()
+        val filePaths = (status?.staged.orEmpty() + status?.unstaged.orEmpty()).map { it.filePath }
+
+        treeContractedDirectories.value = allDirectoriesOf(filePaths)
+    }
+
     fun toggleTreeDirectoryVisibility(directoryPath: String) {
         val contractedDirectories = treeContractedDirectories.value
 
@@ -616,7 +651,7 @@ class StatusViewModelExtender @AssistedInject constructor(
         isAmendRebaseInteractive.value = isAmend
     }
 
-    fun commit(message: String) = viewModelScope.launch {
+    fun commit(message: String, pushAfterCommit: Boolean = false) = viewModelScope.launch {
         val amend = isAmend.value
 
         val personIdent = getIdentity()
@@ -630,6 +665,10 @@ class StatusViewModelExtender @AssistedInject constructor(
         if (doCommitResult is Either.Ok) {
             updateCommitMessage(TextFieldValue(""))
             isAmend.value = false
+
+            if (pushAfterCommit) {
+                pushBranchUseCase(force = false, pushTags = false)
+            }
         } else {
             // If committing failed and the message was going to be persisted before the commit, restart the
             // persistence task

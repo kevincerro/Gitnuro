@@ -37,6 +37,16 @@ fun Modifier.handMouseClickable(enabled: Boolean = true, onClick: () -> Unit): M
         .handOnHover()
 }
 
+/**
+ * Clickable for list rows: without the default indication, whose hover overlay gets stuck when the list scrolls under
+ * a still pointer. Rows draw their own hover with [com.jetpackduba.gitnuro.ui.components.rememberListItemHover].
+ */
+fun Modifier.listRowClickable(onClick: () -> Unit): Modifier {
+    return this
+        .clickable(interactionSource = null, indication = null) { onClick() }
+        .handOnHover()
+}
+
 fun Modifier.handMouseClickable(
     interactionSource: MutableInteractionSource,
     indication: Indication?,

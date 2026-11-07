@@ -24,15 +24,15 @@ class LinesHeight internal constructor(
 )
 
 val spacedLineHeight = LinesHeight(
-    fileHeight = 38.dp,
-    logCommitHeight = 38.dp,
-    sidePanelItemHeight = 36.dp
+    fileHeight = 30.dp,
+    logCommitHeight = 32.dp,
+    sidePanelItemHeight = 28.dp
 )
 
 val compactLineHeight = LinesHeight(
-    fileHeight = 34.dp,
-    logCommitHeight = 34.dp,
-    sidePanelItemHeight = 34.dp
+    fileHeight = 26.dp,
+    logCommitHeight = 28.dp,
+    sidePanelItemHeight = 24.dp
 )
 
 @Composable

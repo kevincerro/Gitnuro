@@ -70,7 +70,7 @@ fun getTitle(taskType: TaskType): String {
         TaskType.BlameFile -> "Blaming file"
         TaskType.ChangeBranchUpstream -> "Changing branch upstream"
         TaskType.ChangesDetection -> "Detecting changes"
-        TaskType.CheckoutBranch -> "Checking out branch"
+        is TaskType.CheckoutBranch -> "Checking out branch"
         TaskType.CheckoutCommit -> "Checking out commit"
         TaskType.CheckoutRemoteBranch -> "Checking out remote branch"
         TaskType.CheckoutTag -> "Checking out tag"
@@ -117,6 +117,9 @@ fun getTitle(taskType: TaskType): String {
         TaskType.StageHunk -> "Staging hunk"
         TaskType.StageLine -> "Staging line"
         TaskType.Stash -> "Stashing"
+        is TaskType.Undo -> "Undoing ${taskType.description}"
+        is TaskType.Redo -> "Redoing ${taskType.description}"
+        is TaskType.Generic -> taskType.title
         TaskType.SyncSubmodule -> "Synchronizing submodule"
         TaskType.Unspecified -> "No task specified"
         TaskType.UnstageAllFiles -> "Unstaging all files"

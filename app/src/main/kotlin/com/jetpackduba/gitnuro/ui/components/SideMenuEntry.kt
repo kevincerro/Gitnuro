@@ -1,5 +1,6 @@
 package com.jetpackduba.gitnuro.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -16,11 +17,11 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jetpackduba.gitnuro.extensions.handMouseClickable
 import com.jetpackduba.gitnuro.app.generated.resources.Res
 import com.jetpackduba.gitnuro.app.generated.resources.chevron_right
 import com.jetpackduba.gitnuro.app.generated.resources.expand_more
-import com.jetpackduba.gitnuro.theme.linesHeight
 import com.jetpackduba.gitnuro.theme.onBackgroundSecondary
 import org.jetbrains.compose.resources.painterResource
 
@@ -36,54 +37,64 @@ fun SideMenuHeader(
     val hoverInteraction = remember { MutableInteractionSource() }
     val isHovered by hoverInteraction.collectIsHoveredAsState()
 
-    Row(
-        modifier = Modifier
-            .height(MaterialTheme.linesHeight.sidePanelItemHeight)
-            .fillMaxWidth()
-            .hoverable(hoverInteraction)
-            .handMouseClickable { onExpand() },
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            painter = painterResource(if (isExpanded) Res.drawable.expand_more else Res.drawable.chevron_right),
-            contentDescription = null,
-            tint = MaterialTheme.colors.onBackground,
+    Column {
+        Box(
             modifier = Modifier
-                .padding(horizontal = 8.dp)
-                .size(16.dp),
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(MaterialTheme.colors.onBackground.copy(alpha = 0.06f))
         )
 
-        if (icon != null) {
+        Row(
+            modifier = Modifier
+                .height(30.dp)
+                .fillMaxWidth()
+                .hoverable(hoverInteraction)
+                .handMouseClickable { onExpand() },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Icon(
-                painter = icon,
+                painter = painterResource(if (isExpanded) Res.drawable.expand_more else Res.drawable.chevron_right),
                 contentDescription = null,
-                tint = MaterialTheme.colors.onBackground,
+                tint = MaterialTheme.colors.onBackgroundSecondary,
                 modifier = Modifier
+                    .padding(start = 6.dp, end = 4.dp)
                     .size(16.dp),
             )
-        }
 
-        Text(
-            text = text,
-            modifier = Modifier
-                .padding(horizontal = 8.dp)
-                .weight(1f),
-            maxLines = 1,
-            style = MaterialTheme.typography.body2,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colors.onBackground,
-            overflow = TextOverflow.Ellipsis,
-        )
+            if (icon != null) {
+                Icon(
+                    painter = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colors.onBackground,
+                    modifier = Modifier
+                        .size(14.dp),
+                )
+            }
 
-        if (hoverIcon != null && isHovered) {
-            hoverIcon()
-        } else
             Text(
-                text = itemsCount.toString(),
-                style = MaterialTheme.typography.body2,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colors.onBackgroundSecondary,
-                modifier = Modifier.padding(end = 16.dp),
+                text = text.uppercase(),
+                modifier = Modifier
+                    .padding(horizontal = 6.dp)
+                    .weight(1f),
+                maxLines = 1,
+                fontSize = 12.sp,
+                letterSpacing = 0.3.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colors.onBackground,
+                overflow = TextOverflow.Ellipsis,
             )
+
+            if (hoverIcon != null && isHovered) {
+                hoverIcon()
+            } else
+                Text(
+                    text = itemsCount.toString(),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colors.primaryVariant,
+                    modifier = Modifier.padding(end = 12.dp),
+                )
+        }
     }
 }

@@ -12,12 +12,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import com.jetpackduba.gitnuro.LocalAvatarProvider
-import com.jetpackduba.gitnuro.domain.extensions.sha256
 import com.jetpackduba.gitnuro.domain.models.Identity
-import org.eclipse.jgit.lib.PersonIdent
 
 @Composable
 fun AvatarImage(
@@ -34,13 +34,15 @@ fun AvatarImage(
     ) {
         val avatarProviderUrl = personIdent
             .email
-            ?.let { email -> current.getAvatarUrl(email.sha256) }
+            ?.takeIf { it.isNotBlank() }
+            ?.let { email -> current.getAvatarUrl(email) }
 
-        var isSuccessfulLoad by remember { mutableStateOf(false) }
+        var isSuccessfulLoad by remember(avatarProviderUrl) { mutableStateOf(false) }
 
         AsyncImage(
             model = avatarProviderUrl,
             contentDescription = null,
+            contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxSize(),
             onState = {
@@ -58,6 +60,8 @@ fun AvatarImage(
                 Text(
                     text = personIdent.name?.firstOrNull()?.uppercase() ?: "#",
                     color = Color.White,
+                    style = MaterialTheme.typography.body2,
+                    fontWeight = FontWeight.SemiBold,
                 )
             }
         }

@@ -21,7 +21,7 @@ sealed interface TaskType {
     data object CherryPickCommit : TaskType
     data object CheckoutCommit : TaskType
     data object ResetToCommit : TaskType
-    data object CheckoutBranch : TaskType
+    data class CheckoutBranch(val branchName: String) : TaskType
     data object CheckoutRemoteBranch : TaskType
     data object CreateBranch : TaskType
     data object DeleteBranch : TaskType
@@ -38,6 +38,11 @@ sealed interface TaskType {
     data class Push(val remoteBranch: Branch?) : TaskType
     data object Fetch : TaskType
     data object Stash : TaskType
+    data class Undo(val description: String) : TaskType
+    data class Redo(val description: String) : TaskType
+
+    /** Operation without a dedicated type (LFS, history rewrites...). [title] is shown while running, [successMessage] when done */
+    data class Generic(val title: String, val successMessage: String) : TaskType
     data object ApplyStash : TaskType
     data object PopStash : TaskType
     data object DeleteStash : TaskType

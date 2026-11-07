@@ -21,13 +21,25 @@ sealed interface StatusAction {
         val selectedEntries: List<DiffType.UncommittedDiff>,
     ) : StatusAction
     data class DiscardSelected(val entryType: EntryType) : StatusAction
+    data object DiscardAll : StatusAction
     data class SelectedEntriesAction(val entryType: EntryType) : StatusAction
     data class OpenInFolder(val path: String) : StatusAction
+    data class IgnoreFile(val statusEntry: StatusEntry) : StatusAction
+    data class IgnoreExtension(val extension: String) : StatusAction
+    data class StashFile(val statusEntry: StatusEntry) : StatusAction
+    data class OpenInDiffTool(val statusEntry: StatusEntry) : StatusAction
+    data class OpenInExternalEditor(val statusEntry: StatusEntry) : StatusAction
+    data class OpenInDefaultProgram(val statusEntry: StatusEntry) : StatusAction
+    data class ShowInFileManager(val statusEntry: StatusEntry) : StatusAction
+    data class CreatePatch(val statusEntry: StatusEntry) : StatusAction
     data class TreeDirectoryToggle(val path: String) : StatusAction
     data object ToggleShowAsTree : StatusAction
+    data object ToggleSortOrder : StatusAction
+    data object ExpandAllDirectories : StatusAction
+    data object CollapseAllDirectories : StatusAction
     data class DirectoryAction(val path: String, val entryType: EntryType) : StatusAction
     data class SearchFilterChanged(val filter: TextFieldValue, val entryType: EntryType) : StatusAction
-    data class Commit(val message: String) : StatusAction
+    data class Commit(val message: String, val pushAfterCommit: Boolean = false) : StatusAction
     data class ContinueRebase(val message: String) : StatusAction
     data object SkipRebase : StatusAction
     data object AbortRebase : StatusAction

@@ -23,7 +23,9 @@ object AppConstants {
         "Gitnuro is a Git client that allows you to manage multiple repositories with a modern experience and live visual representation of your repositories' state."
     const val APP_VERSION = "2.1"
     const val APP_VERSION_CODE = 28
-    const val VERSION_CHECK_URL = "https://raw.githubusercontent.com/JetpackDuba/Gitnuro/main/latest.json"
+    // Fork of JetpackDuba/Gitnuro. Updates are checked against this repository's latest.json (main branch)
+    const val REPOSITORY_URL = "https://github.com/kevincerro/Gitnuro"
+    const val VERSION_CHECK_URL = "https://raw.githubusercontent.com/kevincerro/Gitnuro/main/latest.json"
 }
 
 

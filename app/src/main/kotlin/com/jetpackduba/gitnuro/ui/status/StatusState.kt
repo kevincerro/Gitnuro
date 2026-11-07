@@ -8,9 +8,12 @@ import com.jetpackduba.gitnuro.common.printLog
 import com.jetpackduba.gitnuro.domain.extensions.lowercaseContains
 import com.jetpackduba.gitnuro.domain.models.*
 import com.jetpackduba.gitnuro.ui.UiDataState
+import com.jetpackduba.gitnuro.ui.tree_files.TreeExpansionState
 import com.jetpackduba.gitnuro.ui.tree_files.TreeItem
+import com.jetpackduba.gitnuro.ui.tree_files.treeExpansionState
 import com.jetpackduba.gitnuro.ui.tree_files.entriesToTreeEntry
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine as combineFlows
 import kotlinx.coroutines.flow.MutableStateFlow
 
 private const val TAG = "StatusState"
@@ -42,6 +45,8 @@ data class StatusState(
     val showSearchUnstaged: Boolean = false,
     val searchFilterUnstaged: TextFieldValue = TextFieldValue(""),
     val showAsTree: Boolean = false,
+    val sortDescending: Boolean = false,
+    val treeExpansionState: TreeExpansionState = TreeExpansionState(),
     val commitMessage: TextFieldValue = TextFieldValue(""),
     val previousCommitMessage: String? = null,
     val repositoryState: RepositoryState = RepositoryState.SAFE,
@@ -73,6 +78,7 @@ fun combineStatusState(
     showSearchUnstaged: MutableStateFlow<Boolean>,
     searchFilterUnstaged: MutableStateFlow<TextFieldValue>,
     showAsTree: Flow<Boolean>,
+    sortDescending: Flow<Boolean>,
     treeContractedDirectories: MutableStateFlow<List<String>>,
     swapUncommittedChanges: Flow<Boolean>,
     isAmend: Flow<Boolean>,
@@ -94,7 +100,7 @@ fun combineStatusState(
         searchFilterStaged,
         showSearchUnstaged,
         searchFilterUnstaged,
-        showAsTree,
+        combineFlows(showAsTree, sortDescending) { tree, descending -> tree to descending },
         treeContractedDirectories,
         swapUncommittedChanges,
         isAmend,
@@ -113,7 +119,7 @@ fun combineStatusState(
             searchFilterStaged,
             showSearchUnstaged,
             searchFilterUnstaged,
-            showAsTree,
+            (showAsTree, sortDescending),
             contractedDirectories,
             swapUncommittedChanges,
             isAmend,
@@ -148,22 +154,26 @@ fun combineStatusState(
             staged = statusEntriesToTreeEntry(
                 showAsTree,
                 status.staged,
-                contractedDirectories
+                contractedDirectories,
+                sortDescending,
             ),
             filteredStaged = statusEntriesToTreeEntry(
                 showAsTree,
                 filteredStaged,
-                contractedDirectories
+                contractedDirectories,
+                sortDescending,
             ),
             unstaged = statusEntriesToTreeEntry(
                 showAsTree,
                 status.unstaged,
-                contractedDirectories
+                contractedDirectories,
+                sortDescending,
             ),
             filteredUnstaged = statusEntriesToTreeEntry(
                 showAsTree,
                 filteredUnstaged,
-                contractedDirectories
+                contractedDirectories,
+                sortDescending,
             ),
             swapUncommittedChanges = swapUncommittedChanges,
             isAmend = isAmend,
@@ -177,6 +187,11 @@ fun combineStatusState(
             showSearchUnstaged = showSearchUnstaged,
             searchFilterUnstaged = searchFilterUnstaged,
             showAsTree = showAsTree,
+            sortDescending = sortDescending,
+            treeExpansionState = treeExpansionState(
+                (status.staged + status.unstaged).map { it.filePath },
+                contractedDirectories,
+            ),
             commitMessage = commitMessage,
             previousCommitMessage = previousCommitMessage,
             repositoryState = repositoryState,
@@ -190,12 +205,14 @@ fun combineStatusState(
 private fun statusEntriesToTreeEntry(
     showAsTree: Boolean,
     entries: List<StatusEntry>,
-    contractedDirectories: List<String>
+    contractedDirectories: List<String>,
+    sortDescending: Boolean,
 ): List<TreeItem<StatusEntry>> {
     return entriesToTreeEntry(
         showAsTree,
         entries,
-        contractedDirectories
+        contractedDirectories,
+        sortDescending,
     ) { it.filePath }
 }
 

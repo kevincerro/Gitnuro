@@ -24,6 +24,7 @@ import androidx.compose.ui.window.rememberWindowState
 import androidx.navigation3.runtime.NavKey
 import com.jetpackduba.gitnuro.app.generated.resources.Res
 import com.jetpackduba.gitnuro.app.generated.resources.logo
+import com.jetpackduba.gitnuro.avatarproviders.GitHubAvatarProvider
 import com.jetpackduba.gitnuro.avatarproviders.GravatarAvatarProvider
 import com.jetpackduba.gitnuro.avatarproviders.NoneAvatarProvider
 import com.jetpackduba.gitnuro.common.OS
@@ -219,6 +220,7 @@ class App @Inject constructor(
 
                 val avatarProvider = when (avatarProviderType) {
                     AvatarProviderType.Gravatar -> GravatarAvatarProvider()
+                    AvatarProviderType.GitHub -> GitHubAvatarProvider()
                     AvatarProviderType.None -> NoneAvatarProvider()
                 }
 

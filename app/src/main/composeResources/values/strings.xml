@@ -58,10 +58,10 @@
     <string name="bottom_info_bar_app_version">Version %1$s</string>
 
     <!-- Side pane view -->
-    <string name="side_pane_search_hint">Search for branches, tags &amp; more</string>
-    <string name="side_pane_local_branches_title">Local branches</string>
+    <string name="side_pane_search_hint">Filter</string>
+    <string name="side_pane_local_branches_title">Local</string>
     <string name="side_pane_local_branches_current_branch_label">HEAD</string>
-    <string name="side_pane_remotes_title">Remotes</string>
+    <string name="side_pane_remotes_title">Remote</string>
     <string name="side_pane_tags_title">Tags</string>
     <string name="side_pane_stashes_title">Stashes</string>
     <string name="side_pane_submodules_title">Submodules</string>
@@ -105,6 +105,25 @@
     <string name="status_entries_context_menu_unstage_multiple_files">Unstage %1$s files</string>
     <string name="status_entries_context_menu_copy_files_absolute_paths">Copy paths</string>
     <string name="status_entries_context_menu_copy_files_relative_paths">Copy relative paths</string>
+    <string name="status_entry_menu_stage">Stage</string>
+    <string name="status_entry_menu_unstage">Unstage</string>
+    <string name="status_entry_menu_discard_changes">Discard changes</string>
+    <string name="status_entry_menu_ignore">Ignore</string>
+    <string name="status_entry_menu_ignore_file">Ignore '%1$s'</string>
+    <string name="status_entry_menu_ignore_extension">All files with the extension '.%1$s'</string>
+    <string name="status_entry_menu_stash_file">Stash file</string>
+    <string name="status_entry_menu_file_history">File History</string>
+    <string name="status_entry_menu_file_blame">File Blame</string>
+    <string name="status_entry_menu_open_diff_tool">Open in external diff tool</string>
+    <string name="status_entry_menu_open_external_editor">Open in external editor</string>
+    <string name="status_entry_menu_open_default_program">Open file in default program</string>
+    <string name="status_entry_menu_show_in_finder">Show in Finder</string>
+    <string name="status_entry_menu_show_in_explorer">Show in Explorer</string>
+    <string name="status_entry_menu_show_in_folder">Show in folder</string>
+    <string name="status_entry_menu_copy_file_path">Copy file path</string>
+    <string name="status_entry_menu_create_patch">Create patch from file changes</string>
+    <string name="status_entry_menu_edit_file">Edit file</string>
+    <string name="status_entry_menu_delete_file">Delete file</string>
 
     <!-- Branch context menu -->
     <string name="branch_context_menu_checkout_branch">Checkout branch</string>
@@ -182,6 +201,7 @@
     <string name="settings_entry_environment">Environment</string>
     <string name="settings_entry_branches">Branches</string>
     <string name="settings_entry_remote_actions">Remote actions</string>
+    <string name="settings_entry_commit_signing">Commit signing</string>
     <string name="settings_section_network">Network</string>
     <string name="settings_entry_proxy">Proxy</string>
     <string name="settings_entry_auth">Authentication</string>

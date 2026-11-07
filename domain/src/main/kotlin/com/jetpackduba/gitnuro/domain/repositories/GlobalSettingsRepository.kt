@@ -1,5 +1,6 @@
 package com.jetpackduba.gitnuro.domain.repositories
 
+import com.jetpackduba.gitnuro.domain.models.ToolbarPullMode
 import com.jetpackduba.gitnuro.domain.models.GlobalConfig
 import com.jetpackduba.gitnuro.domain.models.AvatarProviderType
 import com.jetpackduba.gitnuro.domain.models.DiffTextViewType
@@ -28,6 +29,7 @@ interface GlobalSettingsRepository {
 
     // Git
     val pullWithRebase: Flow<Boolean?>
+    val toolbarPullMode: Flow<ToolbarPullMode?>
     val pushWithLease: Flow<Boolean?>
     val fastForwardMerge: Flow<Boolean?>
     val autoStashOnMerge: Flow<Boolean?>

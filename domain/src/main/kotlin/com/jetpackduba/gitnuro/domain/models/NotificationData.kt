@@ -25,7 +25,7 @@ fun TaskType.successTitle(): String? {
         TaskType.CherryPickCommit -> "Commit cherry-picked"
         TaskType.CheckoutCommit -> "Commit checked out"
         TaskType.ResetToCommit -> "Reset to commit completed"
-        TaskType.CheckoutBranch -> "Branch checked out"
+        is TaskType.CheckoutBranch -> "Branch checked out"
         TaskType.CheckoutRemoteBranch -> "Remote branch checked out"
         TaskType.CreateBranch -> "Branch created"
         TaskType.DeleteBranch -> "Branch deleted"
@@ -42,6 +42,9 @@ fun TaskType.successTitle(): String? {
         is TaskType.Push -> "Push completed"
         TaskType.Fetch -> "Fetch completed"
         TaskType.Stash -> "Changes stashed"
+        is TaskType.Undo -> "Undone: ${this.description}"
+        is TaskType.Redo -> "Redone: ${this.description}"
+        is TaskType.Generic -> this.successMessage
         TaskType.ApplyStash -> "Stash applied"
         TaskType.PopStash -> "Stash popped"
         TaskType.DeleteStash -> "Stash deleted"

@@ -85,3 +85,29 @@ private fun LocalDate.isTodayOrYesterday(
             this.month == currentTime.month &&
             this.dayOfMonth in (currentTime.dayOfMonth - 1)..currentTime.dayOfMonth
 }
+/**
+ * Humanized distance between this epoch (in seconds) and now, e.g. "a week ago" or "2 months ago".
+ */
+fun Long.toRelativeAgoString(nowEpochSeconds: Long = Instant.now().epochSecond): String {
+    val seconds = (nowEpochSeconds - this).coerceAtLeast(0)
+    val minutes = seconds / 60.0
+    val hours = minutes / 60.0
+    val days = hours / 24.0
+    val months = days / 30.44
+    val years = days / 365.25
+
+    fun plural(value: Double, single: String, unit: String): String {
+        val rounded = Math.round(value).coerceAtLeast(1)
+        return if (rounded == 1L) "$single ago" else "$rounded $unit ago"
+    }
+
+    return when {
+        seconds < 45 -> "a few seconds ago"
+        minutes < 45 -> plural(minutes, "a minute", "minutes")
+        hours < 22 -> plural(hours, "an hour", "hours")
+        days < 7 -> plural(days, "a day", "days")
+        days < 26 -> plural(days / 7, "a week", "weeks")
+        months < 11 -> plural(months, "a month", "months")
+        else -> plural(years, "a year", "years")
+    }
+}

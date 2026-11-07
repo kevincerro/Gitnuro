@@ -1,70 +1,83 @@
 package com.jetpackduba.gitnuro.ui.context_menu
 
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.painter.Painter
-import com.jetpackduba.gitnuro.app.generated.resources.*
-import org.jetbrains.compose.resources.painterResource
-import org.jetbrains.compose.resources.stringResource
+import com.jetpackduba.gitnuro.domain.usecases.ResetType
 
+/**
+ * Commit context menu, with the same options and order as GitKraken's (without its AI options).
+ */
 fun logContextMenu(
-    onShowStatusAmending: () -> Unit,
-    onCheckoutCommit: () -> Unit,
-    onCreateNewBranch: () -> Unit,
-    onCreateNewTag: () -> Unit,
-    onRevertCommit: () -> Unit,
-    onCherryPickCommit: () -> Unit,
-    onResetBranch: () -> Unit,
-    onRebaseInteractive: () -> Unit,
+    shortHash: String,
+    currentBranchName: String?,
     isLastCommit: Boolean,
-    showInAmend: Boolean,
+    isFirstCommit: Boolean,
+    branchesAtCommit: List<Pair<String, List<ContextMenuElement>>>,
+    onCheckoutCommit: () -> Unit,
+    onCreateWorktree: () -> Unit,
+    onCreateNewBranch: () -> Unit,
+    onCherryPickCommit: () -> Unit,
+    onResetBranch: (ResetType) -> Unit,
+    onRevertCommit: () -> Unit,
+    onRebaseInteractive: () -> Unit,
+    onEditCommitMessage: () -> Unit,
+    onDropCommit: () -> Unit,
+    onMoveCommitUp: () -> Unit,
+    onMoveCommitDown: () -> Unit,
+    onCreateNewTag: () -> Unit,
+    onCreateAnnotatedTag: () -> Unit,
 ) = mutableListOf<ContextMenuElement>().apply {
-    if (showInAmend) {
-        addContextMenu(
-            composableLabel = { stringResource(Res.string.log_context_menu_show_status_to_amend) },
-            icon = { painterResource(Res.drawable.edit) },
-            onClick = onShowStatusAmending
+    fun entry(label: String, onClick: () -> Unit) = add(ContextMenuElement.ContextTextEntry(label, onClick = onClick))
+
+    entry("Checkout this commit", onCheckoutCommit)
+
+    add(ContextMenuElement.ContextSeparator)
+    entry("Create worktree from this commit", onCreateWorktree)
+
+    add(ContextMenuElement.ContextSeparator)
+    entry("Create branch here", onCreateNewBranch)
+    entry("Cherry pick commit", onCherryPickCommit)
+
+    add(
+        ContextMenuElement.ContextSubmenu(
+            composableLabel = { "Reset ${currentBranchName ?: "HEAD"} to this commit" },
+            items = listOf(
+                ContextMenuElement.ContextTextEntry("Soft - keep all changes", onClick = { onResetBranch(ResetType.SOFT) }),
+                ContextMenuElement.ContextTextEntry(
+                    "Mixed - keep working copy but reset index",
+                    onClick = { onResetBranch(ResetType.MIXED) },
+                ),
+                ContextMenuElement.ContextTextEntry("Hard - discard all changes", onClick = { onResetBranch(ResetType.HARD) }),
+            ),
         )
+    )
 
-        add(ContextMenuElement.ContextSeparator)
-    }
-
-    addContextMenu(
-        composableLabel = { stringResource(Res.string.log_context_menu_checkout_commit) },
-        icon = { painterResource(Res.drawable.start) },
-        onClick = onCheckoutCommit
-    )
-    addContextMenu(
-        composableLabel = { stringResource(Res.string.log_context_menu_create_branch) },
-        icon = { painterResource(Res.drawable.branch) },
-        onClick = onCreateNewBranch
-    )
-    addContextMenu(
-        composableLabel = { stringResource(Res.string.log_context_menu_create_tag) },
-        icon = { painterResource(Res.drawable.tag) },
-        onClick = onCreateNewTag
-    )
+    entry("Revert commit", onRevertCommit)
 
     add(ContextMenuElement.ContextSeparator)
 
     if (!isLastCommit) {
-        addContextMenu(
-            composableLabel = { stringResource(Res.string.log_context_menu_rebase_interactive) },
-            onClick = onRebaseInteractive
-        )
+        entry("Interactive Rebase children of $shortHash", onRebaseInteractive)
     }
 
-    addContextMenu(
-        composableLabel = { stringResource(Res.string.log_context_menu_revert_commit) },
-        icon = { painterResource(Res.drawable.revert) },
-        onClick = onRevertCommit
-    )
-    addContextMenu(
-        composableLabel = { stringResource(Res.string.log_context_menu_cherry_pick_commit) },
-        onClick = onCherryPickCommit
-    )
-    addContextMenu(
-        composableLabel = { stringResource(Res.string.log_context_menu_reset_current_branch_to_commit) },
-        icon = { painterResource(Res.drawable.undo) },
-        onClick = onResetBranch
-    )
+    entry("Edit commit message", onEditCommitMessage)
+    entry("Drop commit", onDropCommit)
+
+    if (!isLastCommit) {
+        entry("Move commit up", onMoveCommitUp)
+    }
+
+    if (!isFirstCommit) {
+        entry("Move commit down", onMoveCommitDown)
+    }
+
+    if (branchesAtCommit.isNotEmpty()) {
+        add(ContextMenuElement.ContextSeparator)
+
+        branchesAtCommit.forEach { (name, items) ->
+            add(ContextMenuElement.ContextSubmenu(composableLabel = { name }, items = items))
+        }
+    }
+
+    add(ContextMenuElement.ContextSeparator)
+    entry("Create tag here", onCreateNewTag)
+    entry("Create annotated tag here", onCreateAnnotatedTag)
 }

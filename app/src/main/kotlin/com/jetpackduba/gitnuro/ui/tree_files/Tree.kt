@@ -6,20 +6,21 @@ fun <T> entriesToTreeEntry(
     showAsTree: Boolean,
     entries: List<T>,
     treeContractedDirs: List<String>,
+    sortDescending: Boolean = false,
     onGetEntryPath: (T) -> String,
 ): List<TreeItem<T>> {
-    if (!showAsTree) {
-        return entries.map { entry -> entryToTreeFile(entry, onGetEntryPath(entry)) }
+    // In the tree, like GitKraken, each level shows its directories before its files
+    val pathsComparator = PathsComparator(directoriesFirst = showAsTree, descending = sortDescending)
+    val sortedEntries = entries.sortedWith { entry1, entry2 ->
+        pathsComparator.compare(onGetEntryPath(entry1), onGetEntryPath(entry2))
     }
 
-    return entries
-        .asSequence()
-        .sortedWith { entry1, entry2 ->
-            val path1 = onGetEntryPath(entry1)
-            val path2 = onGetEntryPath(entry2)
+    if (!showAsTree) {
+        return sortedEntries.map { entry -> entryToTreeFile(entry, onGetEntryPath(entry)) }
+    }
 
-            PathsComparator().compare(path1, path2)
-        }
+    return sortedEntries
+        .asSequence()
         .flatMap { entry ->
             val filePath = onGetEntryPath(entry)
             val parts = filePath.split("/")
@@ -65,7 +66,14 @@ private fun <T> entryToTreeFile(data: T, path: String): TreeItem.File<T> {
     return TreeItem.File(data, displayName, path, 0)
 }
 
-private class PathsComparator : Comparator<String> {
+/**
+ * Compares paths part by part. With [directoriesFirst], when one path continues into a directory and the other ends
+ * in a file at the same level, the directory goes first (regardless of [descending], which only reverses names).
+ */
+private class PathsComparator(
+    private val directoriesFirst: Boolean = false,
+    private val descending: Boolean = false,
+) : Comparator<String> {
     override fun compare(path1: String, path2: String): Int {
         val path1Parts = path1.split("/")
         val path2Parts = path2.split("/")
@@ -76,16 +84,26 @@ private class PathsComparator : Comparator<String> {
             val part1 = path1Parts.getOrNull(i) ?: return -1
             val part2 = path2Parts.getOrNull(i) ?: return 1
 
-            val comparison = part1.compareTo(part2)
+            if (directoriesFirst && part1 != part2) {
+                val isDirectory1 = i < path1Parts.lastIndex
+                val isDirectory2 = i < path2Parts.lastIndex
+
+                if (isDirectory1 != isDirectory2) {
+                    return if (isDirectory1) -1 else 1
+                }
+            }
+
+            val comparison = part1.compareTo(part2, ignoreCase = true)
+                .takeIf { it != 0 }
+                ?: part1.compareTo(part2)
 
             if (comparison != 0) {
-                return comparison
+                return if (descending) -comparison else comparison
             }
         }
 
         return 0
     }
-
 }
 
 sealed interface TreeItem<out T> {
@@ -106,4 +124,34 @@ sealed interface TreeItem<out T> {
         override val fullPath: String,
         override val depth: Int,
     ) : TreeItem<T>
+}
+
+/**
+ * Returns every directory (and parent directory) that contains at least one of the given paths.
+ */
+fun allDirectoriesOf(filePaths: List<String>): List<String> {
+    return filePaths
+        .flatMap { filePath ->
+            val parts = filePath.split("/").dropLast(1)
+            parts.indices.map { index -> parts.slice(0..index).joinToString("/") }
+        }
+        .distinct()
+}
+
+data class TreeExpansionState(
+    val canExpandAll: Boolean = false,
+    val canCollapseAll: Boolean = false,
+)
+
+/**
+ * "Expand all" only makes sense if some directory is collapsed and "Collapse all" if some directory is expanded.
+ */
+fun treeExpansionState(filePaths: List<String>, contractedDirectories: List<String>): TreeExpansionState {
+    val directories = allDirectoriesOf(filePaths)
+    val contracted = contractedDirectories.toSet()
+
+    return TreeExpansionState(
+        canExpandAll = directories.any { it in contracted },
+        canCollapseAll = directories.any { it !in contracted },
+    )
 }

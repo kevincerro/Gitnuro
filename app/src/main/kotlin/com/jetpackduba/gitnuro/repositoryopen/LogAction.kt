@@ -3,6 +3,7 @@ package com.jetpackduba.gitnuro.repositoryopen
 import com.jetpackduba.gitnuro.domain.models.Branch
 import com.jetpackduba.gitnuro.domain.models.Commit
 import com.jetpackduba.gitnuro.domain.models.Tag
+import com.jetpackduba.gitnuro.domain.usecases.ResetType
 
 sealed interface LogAction {
     data class Merge(val branch: Branch) : LogAction
@@ -26,4 +27,10 @@ sealed interface LogAction {
     data class PushToRemoteBranch(val branch: Branch) : LogAction
     data class PullFromRemoteBranch(val branch: Branch) : LogAction
     data class SearchValueChange(val filter: String) : LogAction
+    data class ResetToCommit(val commit: Commit, val resetType: ResetType) : LogAction
+    data class CreateWorktree(val commit: Commit, val path: String) : LogAction
+    data class EditCommitMessage(val commit: Commit, val message: String) : LogAction
+    data class DropCommit(val commit: Commit) : LogAction
+    data class MoveCommit(val commit: Commit, val up: Boolean) : LogAction
+    data class CreateAnnotatedTag(val commit: Commit, val name: String, val message: String) : LogAction
 }

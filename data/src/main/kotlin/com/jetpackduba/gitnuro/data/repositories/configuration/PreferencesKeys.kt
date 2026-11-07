@@ -26,6 +26,7 @@ object PreferencesKeys {
     val fastForwardMergePreference get() = booleanPreferencesKey("fast_forward_merge")
     val autoStashOnMergePreference get() = booleanPreferencesKey("auto_stash_on_merge")
     val pullWithRebasePreference get() = booleanPreferencesKey("pull_with_rebase")
+    val toolbarPullModePreference get() = stringPreferencesKey("toolbar_pull_mode")
     val pushWithLeasePreference get() = booleanPreferencesKey("push_with_lease")
     val cloneDefaultDirectoryPreference get() = stringPreferencesKey("clone_default_directory")
 

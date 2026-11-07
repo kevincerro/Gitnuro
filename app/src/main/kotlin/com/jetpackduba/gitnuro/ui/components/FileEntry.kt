@@ -1,5 +1,6 @@
 package com.jetpackduba.gitnuro.ui.components
 
+import com.jetpackduba.gitnuro.extensions.listRowClickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -13,25 +14,47 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jetpackduba.gitnuro.extensions.backgroundIf
 import com.jetpackduba.gitnuro.extensions.handMouseClickable
 import com.jetpackduba.gitnuro.extensions.onDoubleClick
 import com.jetpackduba.gitnuro.app.generated.resources.Res
-import com.jetpackduba.gitnuro.app.generated.resources.folder
-import com.jetpackduba.gitnuro.app.generated.resources.folder_open
+import com.jetpackduba.gitnuro.app.generated.resources.arrow_drop_down
+import com.jetpackduba.gitnuro.app.generated.resources.arrow_right
 import com.jetpackduba.gitnuro.theme.backgroundSelected
-import com.jetpackduba.gitnuro.theme.linesHeight
 import com.jetpackduba.gitnuro.theme.onBackgroundSecondary
 import com.jetpackduba.gitnuro.ui.context_menu.ContextMenu
 import com.jetpackduba.gitnuro.ui.context_menu.ContextMenuElement
 import org.jetbrains.compose.resources.painterResource
 
-private const val TREE_START_PADDING = 12
+/**
+ * Metrics of the changed files tree, measured from GitKraken so both trees look the same.
+ */
+object FileTreeMetrics {
+    /** Space before the first column (the directory triangle) */
+    val rowStartPadding = 9.dp
+
+    /** Extra start space for every nesting level */
+    val levelIndent = 15.dp
+
+    val directoryRowHeight = 25.dp
+    val fileRowHeight = 30.dp
+
+    /** The triangle drawable has internal padding, the visible triangle is ~8dp wide */
+    val directoryArrowSize = 20.dp
+    val directoryNamePadding = 3.dp
+
+    /** Space before the file status icon so it's slightly shifted to the right of the parent's triangle column */
+    val fileIconOffset = 8.dp
+    val fileIconSize = 14.dp
+    val fileNamePadding = 6.dp
+
+    fun startPadding(depth: Int) = rowStartPadding + levelIndent * depth
+}
 
 @Composable
 fun FileEntry(
@@ -43,101 +66,65 @@ fun FileEntry(
     onClick: () -> Unit,
     onDoubleClick: () -> Unit,
     depth: Int = 0,
+    isTreeItem: Boolean = false,
     onGenerateContextMenu: () -> List<ContextMenuElement>,
     trailingAction: (@Composable BoxScope.(isHovered: Boolean) -> Unit)?,
 ) {
-    FileEntry(
-        icon = rememberVectorPainter(icon),
-        iconColor = iconColor,
-        parentDirectoryPath = parentDirectoryPath,
-        fileName = fileName,
+    val hover = rememberListItemHover()
+    val isHovered = hover.isHovered
+
+    TreeRow(
+        height = FileTreeMetrics.fileRowHeight,
+        depth = depth,
         isSelected = isSelected,
+        hover = hover,
         onClick = onClick,
         onDoubleClick = onDoubleClick,
-        depth = depth,
         onGenerateContextMenu = onGenerateContextMenu,
-        trailingAction = trailingAction
-    )
-}
-
-@Composable
-fun FileEntry(
-    icon: Painter,
-    iconColor: Color,
-    parentDirectoryPath: String,
-    fileName: String,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    onDoubleClick: () -> Unit,
-    depth: Int = 0,
-    onGenerateContextMenu: () -> List<ContextMenuElement>,
-    trailingAction: (@Composable BoxScope.(isHovered: Boolean) -> Unit)?,
-) {
-    val hoverInteraction = remember { MutableInteractionSource() }
-    val isHovered by hoverInteraction.collectIsHoveredAsState()
-
-    Box(
-        modifier = Modifier
-            .handMouseClickable { onClick() }
-            .onDoubleClick(onDoubleClick)
-            .fillMaxWidth()
-            .hoverable(hoverInteraction)
+        trailingAction = trailingAction?.let { action -> { action(isHovered) } },
     ) {
-        ContextMenu(
-            items = {
-                onGenerateContextMenu()
-            },
-        ) {
-            Row(
-                modifier = Modifier
-                    .height(MaterialTheme.linesHeight.fileHeight)
-                    .fillMaxWidth()
-                    .backgroundIf(isSelected, MaterialTheme.colors.backgroundSelected)
-                    .padding(start = (TREE_START_PADDING * depth).dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-
-                Icon(
-                    painter = icon,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .padding(horizontal = 8.dp)
-                        .size(16.dp),
-                    tint = iconColor,
-                )
-
-                if (parentDirectoryPath.isNotEmpty()) {
-                    Text(
-                        text = parentDirectoryPath.removeSuffix("/"),
-                        modifier = Modifier.weight(1f, fill = false),
-                        maxLines = 1,
-                        softWrap = false,
-                        style = MaterialTheme.typography.body2,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colors.onBackgroundSecondary,
-                    )
-
-                    Text(
-                        text = "/",
-                        maxLines = 1,
-                        softWrap = false,
-                        style = MaterialTheme.typography.body2,
-                        overflow = TextOverflow.Visible,
-                        color = MaterialTheme.colors.onBackgroundSecondary,
-                    )
-                }
-                Text(
-                    text = fileName,
-                    maxLines = 1,
-                    softWrap = false,
-                    modifier = Modifier.padding(end = 16.dp),
-                    style = MaterialTheme.typography.body2,
-                    color = MaterialTheme.colors.onBackground,
-                )
-            }
+        if (isTreeItem) {
+            Spacer(Modifier.width(FileTreeMetrics.fileIconOffset))
         }
 
-        trailingAction?.invoke(this, isHovered)
+        Icon(
+            painter = rememberVectorPainter(icon),
+            contentDescription = null,
+            modifier = Modifier
+                .padding(end = FileTreeMetrics.fileNamePadding)
+                .size(FileTreeMetrics.fileIconSize),
+            tint = iconColor,
+        )
+
+        if (parentDirectoryPath.isNotEmpty()) {
+            Text(
+                text = parentDirectoryPath.removeSuffix("/"),
+                modifier = Modifier.weight(1f, fill = false),
+                maxLines = 1,
+                softWrap = false,
+                style = MaterialTheme.typography.body1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colors.onBackgroundSecondary,
+            )
+
+            Text(
+                text = "/",
+                maxLines = 1,
+                softWrap = false,
+                style = MaterialTheme.typography.body1,
+                overflow = TextOverflow.Visible,
+                color = MaterialTheme.colors.onBackgroundSecondary,
+            )
+        }
+
+        Text(
+            text = fileName,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.padding(end = 16.dp),
+            style = MaterialTheme.typography.body1,
+            color = MaterialTheme.colors.onBackground,
+        )
     }
 }
 
@@ -149,17 +136,78 @@ fun DirectoryEntry(
     onClick: () -> Unit,
     onGenerateContextMenu: () -> List<ContextMenuElement>,
 ) {
-
-    FileEntry(
-        icon = painterResource(if (isExpanded) Res.drawable.folder_open else Res.drawable.folder),
-        iconColor = MaterialTheme.colors.onBackground,
+    TreeRow(
+        height = FileTreeMetrics.directoryRowHeight,
+        depth = depth,
         isSelected = false,
+        hover = rememberListItemHover(),
         onClick = onClick,
         onDoubleClick = {},
-        parentDirectoryPath = "",
-        fileName = dirName,
-        depth = depth,
         onGenerateContextMenu = onGenerateContextMenu,
         trailingAction = null,
+    ) {
+        DirectoryArrow(isExpanded)
+
+        Text(
+            text = dirName,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.padding(start = FileTreeMetrics.directoryNamePadding, end = 16.dp),
+            style = MaterialTheme.typography.body1,
+            color = MaterialTheme.colors.onBackgroundSecondary,
+        )
+    }
+}
+
+@Composable
+fun DirectoryArrow(isExpanded: Boolean) {
+    Icon(
+        painter = painterResource(if (isExpanded) Res.drawable.arrow_drop_down else Res.drawable.arrow_right),
+        contentDescription = null,
+        tint = MaterialTheme.colors.onBackgroundSecondary,
+        modifier = Modifier.size(FileTreeMetrics.directoryArrowSize),
     )
+}
+
+@Composable
+private fun TreeRow(
+    height: Dp,
+    depth: Int,
+    isSelected: Boolean,
+    hover: ListItemHover,
+    onClick: () -> Unit,
+    onDoubleClick: () -> Unit,
+    onGenerateContextMenu: () -> List<ContextMenuElement>,
+    trailingAction: (@Composable BoxScope.() -> Unit)?,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val isHovered = hover.isHovered
+
+    Box(
+        modifier = Modifier
+            .listRowClickable { onClick() }
+            .onDoubleClick(onDoubleClick)
+            .fillMaxWidth()
+            .then(hover.modifier)
+    ) {
+        ContextMenu(
+            items = onGenerateContextMenu,
+        ) {
+            Row(
+                modifier = Modifier
+                    .height(height)
+                    .fillMaxWidth()
+                    .backgroundIf(
+                        condition = isSelected,
+                        color = MaterialTheme.colors.backgroundSelected,
+                        elseColor = if (isHovered) MaterialTheme.colors.onBackground.copy(alpha = 0.05f) else null,
+                    )
+                    .padding(start = FileTreeMetrics.startPadding(depth)),
+                verticalAlignment = Alignment.CenterVertically,
+                content = content,
+            )
+        }
+
+        trailingAction?.invoke(this)
+    }
 }

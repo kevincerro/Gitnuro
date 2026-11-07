@@ -1,9 +1,11 @@
 package com.jetpackduba.gitnuro.data.repositories.configuration
 
+import com.jetpackduba.gitnuro.domain.models.ToolbarPullMode
 import com.jetpackduba.gitnuro.data.GlobalSettingsDataStore
 import com.jetpackduba.gitnuro.data.extensions.get
 import com.jetpackduba.gitnuro.data.extensions.setValue
 import com.jetpackduba.gitnuro.data.repositories.configuration.PreferencesKeys.autoStashOnMergePreference
+import com.jetpackduba.gitnuro.data.repositories.configuration.PreferencesKeys.toolbarPullModePreference
 import com.jetpackduba.gitnuro.data.repositories.configuration.PreferencesKeys.avatarProviderPreference
 import com.jetpackduba.gitnuro.data.repositories.configuration.PreferencesKeys.cacheCredentialsPreference
 import com.jetpackduba.gitnuro.data.repositories.configuration.PreferencesKeys.cloneDefaultDirectoryPreference
@@ -82,6 +84,10 @@ class DataStoreGlobalSettingsRepository @Inject constructor(
 
     // Git
     override val pullWithRebase get() = dataStore[pullWithRebasePreference]
+    override val toolbarPullMode
+        get() = dataStore[toolbarPullModePreference].map { value ->
+            ToolbarPullMode.entries.firstOrNull { it.name == value }
+        }
     override val pushWithLease get() = dataStore[pushWithLeasePreference]
     override val fastForwardMerge get() = dataStore[fastForwardMergePreference]
     override val autoStashOnMerge get() = dataStore[autoStashOnMergePreference]
@@ -130,6 +136,7 @@ class DataStoreGlobalSettingsRepository @Inject constructor(
 
                 is GlobalConfig.ProxyUseAuth -> setValue(proxyUseAuthPreference, globalConfig.value)
                 is GlobalConfig.PullWithRebase -> setValue(pullWithRebasePreference, globalConfig.value)
+                is GlobalConfig.ToolbarPull -> setValue(toolbarPullModePreference, globalConfig.value.name)
                 is GlobalConfig.PushWithLease -> setValue(pushWithLeasePreference, globalConfig.value)
                 is GlobalConfig.ScaleUi -> setValue(scaleUiPreference, globalConfig.value)
                 is GlobalConfig.CacheCredentialsInMemory -> setValue(cacheCredentialsPreference, globalConfig.value)

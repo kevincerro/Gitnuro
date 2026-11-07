@@ -27,6 +27,7 @@ import com.jetpackduba.gitnuro.domain.repositories.CompletedTask
 import com.jetpackduba.gitnuro.repositoryopen.RepositoryOpenPage
 import com.jetpackduba.gitnuro.tabViewModel
 import com.jetpackduba.gitnuro.theme.dialogOverlay
+import com.jetpackduba.gitnuro.ui.components.BranchSwitchedNotification
 import com.jetpackduba.gitnuro.ui.components.Notification
 import com.jetpackduba.gitnuro.ui.dialogs.*
 import com.jetpackduba.gitnuro.ui.dialogs.base.UserPasswordDialog
@@ -35,6 +36,7 @@ import com.jetpackduba.gitnuro.ui.dialogs.settings.GlobalSettingsDialog
 import com.jetpackduba.gitnuro.ui.status.CommitterDataRequestState
 import com.jetpackduba.gitnuro.viewmodels.RepositoryTabViewModel
 import kotlinx.coroutines.delay
+import com.jetpackduba.gitnuro.domain.models.TaskType
 import org.jetbrains.compose.resources.painterResource
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -400,9 +402,21 @@ fun AppTab(
             }
         }
 
-        if (processingTask != null) {
+        // Only shown when the operation takes a moment, so fast ones don't flash the loading screen
+        var visibleProcessingTask by remember { mutableStateOf<TaskType?>(null) }
+
+        LaunchedEffect(processingTask) {
+            if (processingTask == null) {
+                visibleProcessingTask = null
+            } else {
+                delay(250)
+                visibleProcessingTask = processingTask
+            }
+        }
+
+        visibleProcessingTask?.let { task ->
             ProcessingScreen(
-                processingTask,
+                task,
                 onCancelOnGoingTask = { repositoryTabViewModel.cancelOngoingTask() }
             )
         }
@@ -415,6 +429,7 @@ fun AppTab(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             for (task in tasks) {
+                if (task.isBranchSwitch()) continue
 
                 val notificationData = task.toNotificationData()
 
@@ -428,8 +443,34 @@ fun AppTab(
                 }
             }
         }
+
+        // Switching branches gets a bigger, more visible card instead of the small toast. Only the latest one is
+        // shown; older pending ones (e.g. quick consecutive checkouts) are discarded.
+        val branchSwitches = tasks.filter { it.isBranchSwitch() }
+        val lastBranchSwitch = branchSwitches.lastOrNull()
+
+        LaunchedEffect(branchSwitches) {
+            branchSwitches.dropLast(1).forEach { repositoryTabViewModel.completedTaskAlreadyShown(it) }
+        }
+
+        if (lastBranchSwitch != null) {
+            key(lastBranchSwitch) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 96.dp),
+                ) {
+                    BranchSwitchedNotification(
+                        branchName = (lastBranchSwitch.taskType as TaskType.CheckoutBranch).branchName,
+                        onFinished = { repositoryTabViewModel.completedTaskAlreadyShown(lastBranchSwitch) },
+                    )
+                }
+            }
+        }
     }
 }
+
+private fun CompletedTask.isBranchSwitch() = this is CompletedTask.Success && taskType is TaskType.CheckoutBranch
 
 fun CompletedTask.toNotificationData(): NotificationData? {
     val message = this.taskType.successTitle() ?: return null

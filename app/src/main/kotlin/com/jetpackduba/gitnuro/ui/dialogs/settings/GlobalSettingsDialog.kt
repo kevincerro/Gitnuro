@@ -103,6 +103,9 @@ val settings = listOf(
         Res.drawable.cloud,
         Res.string.settings_entry_remote_actions
     ) { state, onAction -> RemoteActions(state, onAction) },
+    SettingsEntry.Entry(Res.drawable.sign, Res.string.settings_entry_commit_signing) { _, _ ->
+        CommitSigning()
+    },
 
     SettingsEntry.Section(Res.string.settings_section_network),
     SettingsEntry.Entry(Res.drawable.network, Res.string.settings_entry_proxy) { state, onAction ->
@@ -671,6 +674,7 @@ private fun Appearance(settingsViewState: SettingsViewState, onAction: (Settings
         dropDownOptions = listOf(
             DropDownOption(AvatarProviderType.None, "None"),
             DropDownOption(AvatarProviderType.Gravatar, "Gravatar"),
+            DropDownOption(AvatarProviderType.GitHub, "GitHub"),
         ),
         onOptionSelected = {
             onAction(SettingsAction.SetConfig(GlobalConfig.AvatarProvider(it.value)))
@@ -871,7 +875,7 @@ fun SettingTextInput(
 }
 
 @Composable
-private fun FieldTitles(
+internal fun FieldTitles(
     title: String,
     subtitle: String,
     enabled: Boolean = true,

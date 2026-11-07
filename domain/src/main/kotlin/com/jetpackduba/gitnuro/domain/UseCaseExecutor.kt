@@ -121,7 +121,9 @@ class UseCaseExecutor @Inject constructor(
             return either { block(repositoryPath) }.apply {
                 if (this is Either.Ok || refreshEvenIfFailed) {
                     if (dataToRefresh.isNotEmpty()) {
-                        refreshDataUseCase.get()(*dataToRefresh)
+                        // Wait for the refresh so the operation (and its loading screen) lasts until the UI has
+                        // the new data, e.g. a checkout isn't "done" until the graph shows the new branch
+                        refreshDataUseCase.get()(*dataToRefresh).join()
                     }
                 }
             }

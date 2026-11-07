@@ -1,5 +1,7 @@
 package com.jetpackduba.gitnuro.domain.services
 
+import kotlinx.coroutines.flow.combine
+import com.jetpackduba.gitnuro.domain.models.ToolbarPullMode
 import com.jetpackduba.gitnuro.common.flows.combine
 import com.jetpackduba.gitnuro.common.flows.defaultIfNull
 import com.jetpackduba.gitnuro.domain.models.AvatarProviderType
@@ -34,6 +36,12 @@ class GlobalSettingsService @Inject constructor(
     val diffDisplayFullFile: Flow<Boolean> get() = globalSettingsRepository.diffDisplayFullFile.defaultIfNull { DEFAULT_DIFF_DISPLAY_FULL_FILE }
     val diffTextViewType: Flow<DiffTextViewType> get() = globalSettingsRepository.diffTextViewType.defaultIfNull { DEFAULT_DIFF_TEXT_VIEW_TYPE }
     val pullWithRebase: Flow<Boolean> get() = globalSettingsRepository.pullWithRebase.defaultIfNull { DEFAULT_PULL_WITH_REBASE }
+
+    /** If never chosen, it follows the "pull with rebase" setting */
+    val toolbarPullMode: Flow<ToolbarPullMode>
+        get() = globalSettingsRepository.toolbarPullMode.combine(pullWithRebase) { mode, withRebase ->
+            mode ?: if (withRebase) ToolbarPullMode.PULL_REBASE else ToolbarPullMode.PULL_FAST_FORWARD_IF_POSSIBLE
+        }
     val pushWithLease: Flow<Boolean> get() = globalSettingsRepository.pushWithLease.defaultIfNull { DEFAULT_PUSH_WITH_LEASE }
     val fastForwardMerge: Flow<Boolean> get() = globalSettingsRepository.fastForwardMerge.defaultIfNull { DEFAULT_FAST_FORWARD_MERGE }
     val autoStashOnMerge: Flow<Boolean> get() = globalSettingsRepository.autoStashOnMerge.defaultIfNull { DEFAULT_AUTO_STASH_ON_MERGE }
@@ -57,7 +65,7 @@ class GlobalSettingsService @Inject constructor(
         const val DEFAULT_DATE_IS_24H = true
         const val DEFAULT_DATE_USE_RELATIVE = true
         const val DEFAULT_DATE_CUSTOM_FORMAT = "dd MMM yyyy"
-        val DEFAULT_AVATAR_PROVIDER = AvatarProviderType.Gravatar
+        val DEFAULT_AVATAR_PROVIDER = AvatarProviderType.GitHub
         const val DEFAULT_SWAP_STATUS_PANES = false
         const val DEFAULT_SHOW_CHANGES_AS_TREE = false
         const val DEFAULT_DIFF_DISPLAY_FULL_FILE = false
