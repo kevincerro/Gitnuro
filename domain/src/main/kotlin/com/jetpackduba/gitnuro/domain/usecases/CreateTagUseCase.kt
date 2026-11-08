@@ -10,12 +10,12 @@ class CreateTagUseCase @Inject constructor(
     private val useCaseExecutor: UseCaseExecutor,
     private val createTagGitAction: ICreateTagGitAction,
 ) {
-    operator fun invoke(tag: String, revCommit: Commit) {
+    operator fun invoke(tag: String, revCommit: Commit, message: String? = null) {
         useCaseExecutor.executeLaunch(
             taskType = TaskType.CreateTag,
             dataToRefresh = arrayOf(DataToRefresh.LOG, DataToRefresh.TAGS),
         ) { repositoryPath ->
-            createTagGitAction(repositoryPath, tag, revCommit)
+            createTagGitAction(repositoryPath, tag, revCommit, message)
         }
     }
 }

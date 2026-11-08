@@ -5,47 +5,38 @@ import com.jetpackduba.gitnuro.data.git.signers.AppGpgSigner
 import com.jetpackduba.gitnuro.data.git.signers.SshSigner
 import com.jetpackduba.gitnuro.domain.interfaces.ICreateTagGitAction
 import com.jetpackduba.gitnuro.domain.models.Commit
-import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.lib.ObjectId
-import org.eclipse.jgit.revwalk.RevCommit
+import org.eclipse.jgit.lib.Repository
 import org.eclipse.jgit.revwalk.RevWalk
 import javax.inject.Inject
 import javax.inject.Provider
 
-private const val GPG_FORMAT_SSH = "ssh"
-private const val GPG_FORMAT_GPG = "gpg"
-
+/**
+ * Creates an annotated tag, signed with the app's signers when "tag.gpgSign" is enabled (gpg binary + in-app
+ * passphrase dialog, or SSH), so signing never needs a terminal for the pinentry.
+ */
 class CreateTagGitAction @Inject constructor(
     private val jgit: JGit,
     private val sshSigner: Provider<SshSigner>,
     private val gpgSigner: Provider<AppGpgSigner>,
 ) : ICreateTagGitAction {
-    override suspend operator fun invoke(repositoryPath: String, tag: String, commit: Commit) =
+    override suspend operator fun invoke(repositoryPath: String, tag: String, commit: Commit, message: String?) =
         jgit.provide(repositoryPath) { git ->
-            val commitId =
-                ObjectId.fromString(commit.hash) // TODO Should this be used instead of "git.repository.resolve(revCommit.hash) ?: throw Exception("Commit ${revCommit.hash} not found")" used in other places?
-            val commit: RevCommit? = RevWalk(git.repository).use { revWalk ->
-                revWalk.parseCommit(commitId)
-            }
+            val target = RevWalk(git.repository).use { it.parseCommit(ObjectId.fromString(commit.hash)) }
+            val signingKey = tagSigningKey(git.repository)
 
             git
                 .tag()
                 .setAnnotated(true)
                 .setName(tag)
-                .setObjectId(commit)
-                .run {
-                    val signConfig = getTagSigningConfig(git)
-
-                    if (signConfig.isSigningEnabled && signConfig.signingType != null && signConfig.signingKey != null) {
-                        val signer = when (signConfig.signingType) {
-                            SigningType.SSH -> sshSigner.get()
-                            SigningType.GPG -> gpgSigner.get()
-                        }
-
+                .setObjectId(target)
+                .apply { if (message != null) setMessage(message) }
+                .apply {
+                    if (signingKey != null) {
+                        val format = git.repository.config.getString("gpg", null, "format")
                         setSigned(true)
-                            .setSigner(signer)
-                            .setSigningKey(signConfig.signingKey)
-
+                        setSigner(if (format == "ssh") sshSigner.get() else gpgSigner.get())
+                        signingKey.key?.let { setSigningKey(it) }
                     } else {
                         setSigned(false)
                     }
@@ -55,40 +46,20 @@ class CreateTagGitAction @Inject constructor(
             Unit
         }
 
-    private fun getTagSigningConfig(git: Git): TagSignConfig {
-        val config = git.repository.config.apply {
-            load()
+    private class SigningKey(val key: String?)
+
+    /** Null when tags aren't signed. With gpg the key is optional (like git, the committer's email is used). */
+    private fun tagSigningKey(repository: Repository): SigningKey? {
+        val config = repository.config
+
+        if (!config.getBoolean("tag", null, "gpgSign", false)) return null
+
+        val key = config.getString("user", null, "signingKey")
+
+        if (key == null && config.getString("gpg", null, "format") == "ssh") {
+            throw IllegalStateException("Can't sign the tag: user.signingKey is not set.")
         }
 
-        val signTag = config.getBoolean("tag", null, "gpgSign") ?: false
-        val gpgFormat: String? = config.getString("gpg", null, "format")
-        val signingKey: String? = config.getString("user", null, "signingkey")
-
-        return if (signTag) {
-            val type = when (gpgFormat) {
-                GPG_FORMAT_GPG -> SigningType.GPG
-                GPG_FORMAT_SSH -> SigningType.SSH
-                else -> throw IllegalStateException("Unsupported gpg format: $gpgFormat")
-            }
-
-            if (signingKey == null) {
-                throw IllegalStateException("Can't sign tags. Signing key not set: $signingKey")
-            }
-
-            TagSignConfig(signTag, type, signingKey)
-        } else {
-            TagSignConfig(isSigningEnabled = false, signingType = null, signingKey = null)
-        }
+        return SigningKey(key)
     }
-}
-
-private data class TagSignConfig(
-    val isSigningEnabled: Boolean,
-    val signingType: SigningType?,
-    val signingKey: String?,
-)
-
-private enum class SigningType {
-    SSH,
-    GPG,
 }

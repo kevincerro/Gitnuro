@@ -1,5 +1,7 @@
 package com.jetpackduba.gitnuro.domain.extensions
 
+import com.jetpackduba.gitnuro.common.ProcessEnvironment
+
 import com.jetpackduba.gitnuro.common.OS
 import com.jetpackduba.gitnuro.common.currentOs
 import java.io.IOException
@@ -49,7 +51,7 @@ fun File.openFileInFolder() {
 
     if (command != null) {
         try {
-            ProcessBuilder(command).start()
+            ProcessEnvironment.processBuilder(command).start()
         } catch (ex: IOException) {
             printError(TAG, "Failed to open file explorer: ${ex.message}")
         }

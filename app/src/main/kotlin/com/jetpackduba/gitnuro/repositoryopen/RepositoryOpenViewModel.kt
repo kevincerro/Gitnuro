@@ -113,6 +113,9 @@ class RepositoryOpenViewModel @Inject constructor(
     private val startRebaseInteractiveUseCase: StartRebaseInteractiveUseCase,
     private val cherryPickCommitUseCase: CherryPickCommitUseCase,
     private val revertCommitUseCase: RevertCommitUseCase,
+    private val rewordCommitUseCase: RewordCommitUseCase,
+    private val rewriteHistoryUseCase: RewriteHistoryUseCase,
+    private val createTagUseCase: CreateTagUseCase,
     private val abortRebaseUseCase: AbortRebaseUseCase,
     private val appSettings: GlobalSettingsService,
     private val getSummaryFromStatusUseCase: GetSummaryFromStatusUseCase,
@@ -885,11 +888,11 @@ class RepositoryOpenViewModel @Inject constructor(
             is LogAction.SearchValueChange -> onSearchValueChanged(action.filter)
             is LogAction.ResetToCommit -> resetBranchUseCase(action.commit, action.resetType)
             is LogAction.CreateWorktree -> commitHistoryActions.createWorktree(action.commit, action.path)
-            is LogAction.EditCommitMessage -> commitHistoryActions.editMessage(action.commit, action.message)
-            is LogAction.DropCommit -> commitHistoryActions.dropCommit(action.commit)
-            is LogAction.MoveCommit -> commitHistoryActions.moveCommit(action.commit, action.up)
+            is LogAction.EditCommitMessage -> rewordCommitUseCase(action.commit, action.message)
+            is LogAction.DropCommit -> rewriteHistoryUseCase.drop(action.commit)
+            is LogAction.MoveCommit -> rewriteHistoryUseCase.move(action.commit, action.up)
             is LogAction.CreateAnnotatedTag ->
-                commitHistoryActions.createAnnotatedTag(action.commit, action.name, action.message)
+                createTagUseCase(action.name, action.commit, action.message)
         }
     }
 

@@ -1,5 +1,7 @@
 package com.jetpackduba.gitnuro.repositoryopen
 
+import com.jetpackduba.gitnuro.common.ProcessEnvironment
+
 import com.jetpackduba.gitnuro.domain.IShellManager
 import com.jetpackduba.gitnuro.domain.UseCaseExecutor
 import com.jetpackduba.gitnuro.domain.errors.Either
@@ -152,7 +154,7 @@ class CommitSignatureVerifier @Inject constructor(
         return try {
             signatureFile.writeText(signature.signature + "\n")
 
-            val process = ProcessBuilder(
+            val process = ProcessEnvironment.processBuilder(
                 "ssh-keygen", "-Y", "check-novalidate", "-n", "git", "-s", signatureFile.absolutePath,
             ).start()
 

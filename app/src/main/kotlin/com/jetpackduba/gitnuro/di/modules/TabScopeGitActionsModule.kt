@@ -394,6 +394,14 @@ interface TabScopeGitActionsModule {
 
     @Binds
     @TabScope
+    fun bindsRewordCommitGitAction(action: RewordCommitGitAction): IRewordCommitGitAction
+
+    @Binds
+    @TabScope
+    fun bindsRewriteHistoryGitAction(action: RewriteHistoryGitAction): IRewriteHistoryGitAction
+
+    @Binds
+    @TabScope
     fun bindsStartRebaseInteractiveGitAction(action: StartRebaseInteractiveGitAction): IStartRebaseInteractiveGitAction
 
     @Binds

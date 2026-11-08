@@ -14,6 +14,7 @@ import com.jetpackduba.gitnuro.repositoryopen.SignatureType
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -21,7 +22,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
 import androidx.compose.material.LinearProgressIndicator
@@ -37,7 +38,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -106,6 +111,7 @@ fun CommitChanges(
         onHistory = onHistory,
         onOpenFileInFolder = { viewModel.openFileInFolder(it) },
         onAction = { viewModel.onAction(it) },
+        onEditMessage = { message -> viewModel.onAction(LogAction.EditCommitMessage(commitChangesState.commit, message)) },
     )
 }
 
@@ -120,6 +126,7 @@ private fun CommitChangesView(
     onHistory: (String) -> Unit,
     onOpenFileInFolder: (String) -> Unit,
     onAction: (CommitChangesAction) -> Unit,
+    onEditMessage: (String) -> Unit,
 ) {
     val commit = commitChangesState.commit
 
@@ -167,8 +174,10 @@ private fun CommitChangesView(
         CommitHeader(commit, commitSignature?.takeIf { it.commitHash == commit.hash })
 
         CommitMessageBox(
+            commitHash = commit.hash,
             message = commit.message,
             textScroll = textScroll,
+            onEditMessage = onEditMessage,
         )
 
         CommitAuthorInfo(commit)
@@ -439,44 +448,100 @@ private fun InstantTooltipText(
 
 @Composable
 private fun CommitMessageBox(
+    commitHash: String,
     message: String,
     textScroll: ScrollState,
+    onEditMessage: (String) -> Unit,
 ) {
     val normalizedMessage = remember(message) { message.trim().replace("\r\n", "\n") }
     val summary = normalizedMessage.substringBefore("\n")
     val body = normalizedMessage.substringAfter("\n", missingDelimiterValue = "").trim()
 
-    Box(
-        modifier = Modifier
-            .padding(horizontal = 12.dp)
-            .fillMaxWidth()
-            .heightIn(min = 120.dp, max = 220.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(MaterialTheme.colors.background)
-            .border(1.dp, MaterialTheme.colors.onBackground.copy(alpha = 0.06f), RoundedCornerShape(4.dp))
-    ) {
-        SelectionContainer {
-            Column(
+    var isEditing by remember(commitHash) { mutableStateOf(false) }
+    var draft by remember { mutableStateOf(TextFieldValue()) }
+
+    val boxModifier = Modifier
+        .padding(horizontal = 12.dp)
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(4.dp))
+        .background(MaterialTheme.colors.background)
+
+    if (isEditing) {
+        val focusRequester = remember { FocusRequester() }
+        val canSave = draft.text.isNotBlank() && draft.text.trim() != normalizedMessage
+
+        LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+        Column(
+            modifier = boxModifier
+                .border(1.dp, MaterialTheme.colors.primary.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                .padding(12.dp),
+        ) {
+            BasicTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                textStyle = MaterialTheme.typography.body2.copy(color = MaterialTheme.colors.onBackground),
+                cursorBrush = SolidColor(MaterialTheme.colors.onBackground),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(textScroll)
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                    .heightIn(min = 96.dp, max = 180.dp)
+                    .focusRequester(focusRequester),
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = summary,
-                    fontSize = 17.sp,
-                    lineHeight = 24.sp,
-                    color = MaterialTheme.colors.onBackground,
+                    text = "Cancel",
+                    style = MaterialTheme.typography.body2,
+                    color = MaterialTheme.colors.onBackgroundSecondary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .handMouseClickable { isEditing = false }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                 )
 
-                if (body.isNotEmpty()) {
-                    Text(
-                        text = body,
-                        style = MaterialTheme.typography.body2,
-                        color = MaterialTheme.colors.onBackgroundSecondary,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
+                Spacer(Modifier.width(6.dp))
+
+                PrimaryButton(
+                    text = "Save",
+                    enabled = canSave,
+                    onClick = {
+                        onEditMessage(draft.text.trim())
+                        isEditing = false
+                    },
+                )
+            }
+        }
+    } else {
+        Column(
+            modifier = boxModifier
+                .heightIn(min = 120.dp, max = 220.dp)
+                .border(1.dp, MaterialTheme.colors.onBackground.copy(alpha = 0.06f), RoundedCornerShape(4.dp))
+                .pointerHoverIcon(PointerIcon.Text)
+                .clickable {
+                    draft = TextFieldValue(normalizedMessage, TextRange(normalizedMessage.length))
+                    isEditing = true
                 }
+                .verticalScroll(textScroll)
+                .padding(12.dp),
+        ) {
+            Text(
+                text = summary,
+                fontSize = 17.sp,
+                lineHeight = 24.sp,
+                color = MaterialTheme.colors.onBackground,
+            )
+
+            if (body.isNotEmpty()) {
+                Text(
+                    text = body,
+                    style = MaterialTheme.typography.body2,
+                    color = MaterialTheme.colors.onBackgroundSecondary,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
             }
         }
     }

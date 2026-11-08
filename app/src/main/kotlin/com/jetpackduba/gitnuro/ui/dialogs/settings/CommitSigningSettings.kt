@@ -1,5 +1,7 @@
 package com.jetpackduba.gitnuro.ui.dialogs.settings
 
+import com.jetpackduba.gitnuro.common.ProcessEnvironment
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.Icon
 import androidx.compose.material.MaterialTheme
@@ -375,11 +377,9 @@ private fun readSigningConfig(): SigningConfig {
 
 private fun String?.toGitBoolean(): Boolean = this?.lowercase() in setOf("true", "yes", "on", "1")
 
-private fun gitBinary(): String = GpgBinary.resolve("git") ?: "git"
-
 private fun readGlobalConfig(key: String): String? {
     return try {
-        val process = ProcessBuilder(gitBinary(), "config", "--global", "--get", key).start()
+        val process = ProcessEnvironment.processBuilder("git", "config", "--global", "--get", key).start()
         val output = process.inputStream.bufferedReader().readText().trim()
         process.waitFor(10, TimeUnit.SECONDS)
         output.takeIf { process.exitValue() == 0 && it.isNotEmpty() }
@@ -393,13 +393,13 @@ private fun readGlobalConfig(key: String): String? {
  */
 private fun writeGlobalConfig(key: String, value: String?): String? {
     val args = if (value == null) {
-        listOf(gitBinary(), "config", "--global", "--unset", key)
+        listOf("git", "config", "--global", "--unset", key)
     } else {
-        listOf(gitBinary(), "config", "--global", key, value)
+        listOf("git", "config", "--global", key, value)
     }
 
     return try {
-        val process = ProcessBuilder(args).start()
+        val process = ProcessEnvironment.processBuilder(args).start()
         val error = process.errorStream.bufferedReader().readText().trim()
         process.waitFor(10, TimeUnit.SECONDS)
 

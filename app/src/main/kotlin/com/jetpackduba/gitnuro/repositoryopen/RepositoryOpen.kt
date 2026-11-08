@@ -35,6 +35,7 @@ import com.jetpackduba.gitnuro.ui.*
 import com.jetpackduba.gitnuro.ui.components.BottomInfoBar
 import com.jetpackduba.gitnuro.ui.components.TripleVerticalSplitPanel
 import com.jetpackduba.gitnuro.ui.diff.DiffPane
+import com.jetpackduba.gitnuro.ui.dialogs.ForcePushDialog
 import com.jetpackduba.gitnuro.ui.log.Log
 import com.jetpackduba.gitnuro.ui.status.StatusPane
 import com.jetpackduba.gitnuro.updates.Update
@@ -128,6 +129,19 @@ fun RepositoryOpenPage(
                 val toolbarPullMode by repositoryOpenViewModel.toolbarPullMode
                     .collectAsState(ToolbarPullMode.PULL_FAST_FORWARD_IF_POSSIBLE)
                 val currentPushBehind = pushBehindState
+                var showForcePushConfirmation by remember(currentPushBehind) { mutableStateOf(false) }
+
+                if (currentPushBehind != null && showForcePushConfirmation) {
+                    ForcePushDialog(
+                        localRef = currentPushBehind.localRef,
+                        remoteRef = currentPushBehind.remoteRef,
+                        onDismiss = { showForcePushConfirmation = false },
+                        onConfirm = {
+                            showForcePushConfirmation = false
+                            repositoryOpenViewModel.push(force = true, pushTags = false)
+                        },
+                    )
+                }
 
                 if (currentPushBehind != null) {
                     PushBehindBanner(
@@ -138,7 +152,7 @@ fun RepositoryOpenPage(
                             else -> "Pull (fast-forward if possible)"
                         },
                         onPull = { repositoryOpenViewModel.pullFromPushBehind() },
-                        onForcePush = { repositoryOpenViewModel.push(force = true, pushTags = false) },
+                        onForcePush = { showForcePushConfirmation = true },
                         onCancel = { repositoryOpenViewModel.dismissPushBehind() },
                         modifier = Modifier.fillMaxWidth(),
                     )

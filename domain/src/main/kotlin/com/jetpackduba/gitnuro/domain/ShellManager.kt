@@ -1,5 +1,7 @@
 package com.jetpackduba.gitnuro.domain
 
+import com.jetpackduba.gitnuro.common.ProcessEnvironment
+
 import com.jetpackduba.gitnuro.domain.exceptions.CommandExecutionFailed
 import com.jetpackduba.gitnuro.common.printError
 import com.jetpackduba.gitnuro.common.printLog
@@ -24,7 +26,7 @@ class ShellManager @Inject constructor() : IShellManager {
         return try {
             var result: String?
 
-            val processBuilder = ProcessBuilder(command)
+            val processBuilder = ProcessEnvironment.processBuilder(command)
             processBuilder.start().inputStream.use { inputStream ->
                 Scanner(inputStream).useDelimiter("\\A").use { s ->
                     result = if (s.hasNext())
@@ -44,7 +46,7 @@ class ShellManager @Inject constructor() : IShellManager {
     override fun runCommandInPath(command: List<String>, path: String) {
         printLog(TAG, "runCommandInPath: " + command.joinToString(" "))
 
-        val processBuilder = ProcessBuilder(command).apply {
+        val processBuilder = ProcessEnvironment.processBuilder(command).apply {
             directory(File(path))
         }
 
@@ -54,7 +56,7 @@ class ShellManager @Inject constructor() : IShellManager {
     override fun runCommandWithoutResult(command: List<String>): Boolean {
         printLog(TAG, "runCommandWithoutResult: " + command.joinToString(" "))
         return try {
-            val processBuilder = ProcessBuilder(command)
+            val processBuilder = ProcessEnvironment.processBuilder(command)
             val p = processBuilder.start() ?: return false
 
             try {
@@ -81,7 +83,7 @@ class ShellManager @Inject constructor() : IShellManager {
     override fun runCommandProcess(command: List<String>, directory: File?): Process {
         printLog(TAG, "runCommandProcess: " + command.joinToString(" "))
         try {
-            return ProcessBuilder(command)
+            return ProcessEnvironment.processBuilder(command)
                 .run {
                     if (directory != null) {
                         this.directory(directory)

@@ -1,6 +1,7 @@
 package com.jetpackduba.gitnuro.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -13,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Icon
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
@@ -30,12 +32,14 @@ import com.jetpackduba.gitnuro.app.generated.resources.branch
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.painterResource
 
+private const val SWITCHING_DURATION_MS = 700L
 private const val VISIBLE_DURATION_MS = 2200L
 private const val ANIMATION_DURATION_MS = 180
 
 /**
- * Prominent, non-blocking card shown after switching branches. It animates in, stays for a moment and animates out,
- * calling [onFinished] once it's fully hidden. Clicking it dismisses it early.
+ * Prominent, non-blocking card shown after switching branches. It animates in, shows a spinner for a moment (the
+ * checkout is usually so fast that without it nothing seems to happen), then the result, and animates out, calling
+ * [onFinished] once it's fully hidden. Clicking it dismisses it early.
  */
 @Composable
 fun BranchSwitchedNotification(
@@ -44,8 +48,11 @@ fun BranchSwitchedNotification(
 ) {
     val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
     val currentOnFinished by rememberUpdatedState(onFinished)
+    var isSwitching by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
+        delay(SWITCHING_DURATION_MS)
+        isSwitching = false
         delay(VISIBLE_DURATION_MS)
         visibleState.targetState = false
     }
@@ -82,17 +89,27 @@ fun BranchSwitchedNotification(
                     .background(MaterialTheme.colors.primary),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    painterResource(Res.drawable.branch),
-                    contentDescription = null,
-                    tint = MaterialTheme.colors.onPrimary,
-                    modifier = Modifier.size(24.dp),
-                )
+                Crossfade(targetState = isSwitching, animationSpec = tween(ANIMATION_DURATION_MS)) { switching ->
+                    if (switching) {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colors.onPrimary,
+                            strokeWidth = 2.5.dp,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    } else {
+                        Icon(
+                            painterResource(Res.drawable.branch),
+                            contentDescription = null,
+                            tint = MaterialTheme.colors.onPrimary,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = "Switched to branch",
+                    text = if (isSwitching) "Switching to branch…" else "Switched to branch",
                     color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
                     style = MaterialTheme.typography.body2,
                 )

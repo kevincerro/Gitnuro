@@ -33,7 +33,8 @@ class JGit @Inject constructor(
                 val fsToUse = if (fs is FS_Win32) {
                     windowsFs.get()
                 } else {
-                    fs
+                    // Hooks and filters get the full PATH (the app may have been launched from the desktop)
+                    PosixFs()
                 }
 
                 Git

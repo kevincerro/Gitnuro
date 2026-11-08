@@ -1,6 +1,6 @@
 package com.jetpackduba.gitnuro.repositoryopen
 
-import com.jetpackduba.gitnuro.data.git.signers.GpgBinary
+import com.jetpackduba.gitnuro.common.ProcessEnvironment
 import com.jetpackduba.gitnuro.domain.UseCaseExecutor
 import com.jetpackduba.gitnuro.domain.errors.Either
 import com.jetpackduba.gitnuro.domain.errors.GenericError
@@ -201,7 +201,7 @@ class ToolbarGitActions @Inject constructor(
                 null // Detached HEAD or no upstream: nothing to compare with
             } else {
                 val upstreamIsContained = run(
-                    listOf(gitBinary(), "-C", worktree, "merge-base", "--is-ancestor", remoteRef, "HEAD"),
+                    listOf("git", "-C", worktree, "merge-base", "--is-ancestor", remoteRef, "HEAD"),
                     worktree,
                 ) is Either.Ok
 
@@ -253,7 +253,7 @@ class ToolbarGitActions @Inject constructor(
         dataToRefresh = arrayOf(DataToRefresh.STATUS),
     ) { gitDirectory ->
         val worktree = worktreeOf(gitDirectory)
-        val gitLfs = GpgBinary.resolve("git-lfs")
+        val gitLfs = ProcessEnvironment.resolve("git-lfs")
             ?: return@executeLaunch Either.Err(
                 GenericError("git-lfs is not installed. Install it (e.g. \"brew install git-lfs\") and try again.")
             )
@@ -281,25 +281,18 @@ class ToolbarGitActions @Inject constructor(
             ?: File(gitDirectory).let { if (it.name == ".git") it.parentFile.absolutePath else gitDirectory }
     }
 
-    private fun gitBinary(): String = GpgBinary.resolve("git") ?: "git"
-
     /** Runs git and returns its output, or null if it failed */
     private fun git(worktree: String, vararg args: String): String? {
-        return (run(listOf(gitBinary(), "-C", worktree) + args, worktree) as? Either.Ok)?.value
+        return (run(listOf("git", "-C", worktree) + args, worktree) as? Either.Ok)?.value
     }
 
     private fun gitOrError(worktree: String, vararg args: String): Either<String, GenericError> {
-        return run(listOf(gitBinary(), "-C", worktree) + args, worktree)
+        return run(listOf("git", "-C", worktree) + args, worktree)
     }
 
     private fun run(command: List<String>, workingDirectory: String, timeoutMinutes: Long = 2): Either<String, GenericError> {
         return try {
-            val processBuilder = ProcessBuilder(command).directory(File(workingDirectory))
-            // Apps launched from the desktop don't get the shell's PATH, git needs it to find git-lfs, gpg...
-            val path = processBuilder.environment()["PATH"].orEmpty()
-            processBuilder.environment()["PATH"] = listOf(path, "/opt/homebrew/bin", "/usr/local/bin")
-                .filter { it.isNotEmpty() }
-                .joinToString(File.pathSeparator)
+            val processBuilder = ProcessEnvironment.processBuilder(command).directory(File(workingDirectory))
 
             val process = processBuilder.start()
             var error = ""

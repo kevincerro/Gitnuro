@@ -1,6 +1,6 @@
 package com.jetpackduba.gitnuro.data.git.signers
 
-import java.io.File
+import com.jetpackduba.gitnuro.common.ProcessEnvironment
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
@@ -10,42 +10,10 @@ import kotlin.concurrent.thread
  */
 object GpgBinary {
     /**
-     * Apps launched from the desktop don't get the shell's PATH, so look in the usual install locations too.
-     */
-    private val extraSearchDirectories = listOf(
-        "/opt/homebrew/bin",
-        "/usr/local/bin",
-        "/usr/local/MacGPG2/bin",
-        "/usr/bin",
-        "C:\\Program Files (x86)\\GnuPG\\bin",
-        "C:\\Program Files\\GnuPG\\bin",
-        "C:\\Program Files\\Git\\usr\\bin",
-    )
-
-    private val isWindows = System.getProperty("os.name").orEmpty().lowercase().contains("win")
-
-    /**
      * Returns the absolute path of the gpg program (by default "gpg") or null if it can't be found.
      */
     fun resolve(program: String?): String? {
-        val name = program?.trim().takeUnless { it.isNullOrEmpty() } ?: "gpg"
-        val file = File(name)
-
-        if (file.isAbsolute || name.contains(File.separatorChar)) {
-            return file.takeIf { it.isFile && it.canExecute() }?.absolutePath
-        }
-
-        val directories = System.getenv("PATH").orEmpty()
-            .split(File.pathSeparator)
-            .filter { it.isNotBlank() } + extraSearchDirectories
-
-        val candidates = if (isWindows && !name.endsWith(".exe")) listOf(name, "$name.exe") else listOf(name)
-
-        return directories
-            .asSequence()
-            .flatMap { directory -> candidates.asSequence().map { File(directory, it) } }
-            .firstOrNull { it.isFile && it.canExecute() }
-            ?.absolutePath
+        return ProcessEnvironment.resolve(program?.trim().takeUnless { it.isNullOrEmpty() } ?: "gpg")
     }
 
     class Result(val exitCode: Int, val output: ByteArray, val error: String) {
@@ -54,7 +22,7 @@ object GpgBinary {
     }
 
     fun run(gpg: String, args: List<String>, stdin: ByteArray? = null, timeoutSeconds: Long = 120): Result {
-        val process = ProcessBuilder(listOf(gpg) + args).start()
+        val process = ProcessEnvironment.processBuilder(listOf(gpg) + args).start()
 
         var output = ByteArray(0)
         var error = ""

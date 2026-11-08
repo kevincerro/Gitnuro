@@ -31,6 +31,7 @@ import com.jetpackduba.gitnuro.common.OS
 import com.jetpackduba.gitnuro.common.currentOs
 import com.jetpackduba.gitnuro.common.systemSeparator
 import com.jetpackduba.gitnuro.data.DataStoreFilesProvider
+import com.jetpackduba.gitnuro.common.ProcessEnvironment
 import com.jetpackduba.gitnuro.data.git.signers.AppGpgSigner
 import com.jetpackduba.gitnuro.data.git.signers.SshSigner
 import com.jetpackduba.gitnuro.domain.TempFilesManager
@@ -116,6 +117,7 @@ class App @Inject constructor(
 
     @OptIn(ExperimentalFoundationApi::class)
     suspend fun start(args: Array<String>) {
+        ProcessEnvironment.preload()
         initNativeDependencies()
         logsRepository.initLogging()
         observeAndApplyProxySettingsUseCase()
