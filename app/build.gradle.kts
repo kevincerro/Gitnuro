@@ -154,6 +154,11 @@ compose.desktop {
     application {
         mainClass = "com.jetpackduba.gitnuro.MainKt"
 
+        // ProGuard fails on warnings about optional libraries that aren't bundled (logback, log4j, okhttp platforms...)
+        buildTypes.release.proguard {
+            isEnabled.set(false)
+        }
+
         sourceSets.forEach {
             it.java.srcDir(rustGeneratedSource)
         }
@@ -185,8 +190,10 @@ compose.desktop {
                 iconFile.set(project.file("../icons/icon.icns"))
                 bundleID = appPackageName
                 signing {
-                    sign.set(true)
-                    identity.set(providers.environmentVariable("SIGNING_IDENTITY"))
+                    // Only sign when an identity is provided, so local builds work without a Developer ID
+                    val signingIdentity = project.providers.environmentVariable("SIGNING_IDENTITY")
+                    sign.set(signingIdentity.map { true }.orElse(false))
+                    identity.set(signingIdentity)
                 }
                 notarization {
                     val providers = project.providers
