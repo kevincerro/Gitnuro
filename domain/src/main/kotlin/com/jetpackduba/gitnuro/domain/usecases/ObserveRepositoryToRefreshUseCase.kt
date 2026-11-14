@@ -63,6 +63,7 @@ class ObserveRepositoryToRefreshUseCase @Inject constructor(
                                 if (canRefreshData()) {
                                     val containsOnlyEditMessageChanges = changes.all {
                                         it.path == "$repositoryPath/${GitConstants.COMMIT_MSG}" ||
+                                                it.path == "$repositoryPath/${GitConstants.COMMIT_DRAFT}" ||
                                                 it.path == "$repositoryPath/${GitConstants.MERGE_MSG}" ||
                                                 it.path == "$repositoryPath/${GitConstants.SQUASH_MSG}"
                                     }

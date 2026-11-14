@@ -11,6 +11,7 @@ import com.jetpackduba.gitnuro.domain.errors.Either
 import com.jetpackduba.gitnuro.domain.interfaces.IGetWorktreePathGitAction
 import com.jetpackduba.gitnuro.domain.models.*
 import com.jetpackduba.gitnuro.domain.repositories.CloseableView
+import com.jetpackduba.gitnuro.domain.repositories.DataState
 import com.jetpackduba.gitnuro.domain.repositories.RepositoryDataRepository
 import com.jetpackduba.gitnuro.domain.repositories.dataOrNull
 import com.jetpackduba.gitnuro.domain.services.GlobalSettingsService
@@ -106,9 +107,12 @@ class StatusViewModelExtender @AssistedInject constructor(
 
     val swapUncommittedChanges = appSettings.swapStatusPanes
 
-    private val normalCommitMessage = persistedCommitMessageFlow { it.commitMessage }
+    // The draft of a normal commit is only restored once, when the repository is opened. Applying it on every refresh
+    // could bring back the message of the commit that has just been made, right after its field was cleared.
+    private val normalCommitMessage = persistedCommitMessageFlow(restoreOnlyOnce = true) { it.commitMessage }
 
-    private val mergeCommitMessage = persistedCommitMessageFlow { it.mergeMessage }
+    // Git writes the merge message when a merge starts, at any moment
+    private val mergeCommitMessage = persistedCommitMessageFlow(restoreOnlyOnce = false) { it.mergeMessage }
 
     private val commitMessage = combine(
         normalCommitMessage,
@@ -125,12 +129,24 @@ class StatusViewModelExtender @AssistedInject constructor(
     }.stateIn(TextFieldValue(""))
 
 
-    private fun persistedCommitMessageFlow(filter: (PersistedCommitMessage) -> String?): MutableStateFlow<TextFieldValue> {
+    private fun persistedCommitMessageFlow(
+        restoreOnlyOnce: Boolean,
+        filter: (PersistedCommitMessage) -> String?,
+    ): MutableStateFlow<TextFieldValue> {
         val textFlow = MutableStateFlow(TextFieldValue(""))
 
         viewModelScope.launch {
-            repositoryDataRepository
-                .persistedCommitMessage
+            val persistedMessages = if (restoreOnlyOnce) {
+                // Only the first loaded value
+                repositoryDataRepository
+                    .persistedCommitMessage
+                    .filter { it is DataState.Loaded }
+                    .take(1)
+            } else {
+                repositoryDataRepository.persistedCommitMessage
+            }
+
+            persistedMessages
                 .map {
                     it
                         .dataOrNull()

@@ -1,6 +1,7 @@
 package com.jetpackduba.gitnuro.ui
 
 import androidx.compose.desktop.ui.tooling.preview.Preview
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -14,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -667,32 +669,31 @@ fun ExtendedMenuButton(
             enabled = enabled,
             items = { extendedListItems }
         ) {
-            // Same structure as the button's content (an invisible label + the icon's slot) so the arrow is centered on
-            // the icon, whatever the height of the label's font
-            Column(
+            // Like GitKraken: a small grey filled triangle, vertically centered in the button
+            Box(
                 modifier = Modifier
                     .fillMaxHeight()
+                    .padding(horizontal = 4.dp)
                     .ignoreKeyEvents(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
+                contentAlignment = Alignment.Center,
             ) {
-                MenuButtonLabel(" ", Color.Transparent)
-
-                Box(
-                    modifier = Modifier
-                        .padding(top = 4.dp)
-                        .size(18.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        painterResource(Res.drawable.dropdown),
-                        contentDescription = null,
-                        tint = color,
-                        modifier = Modifier.size(14.dp),
-                    )
-                }
+                DropdownTriangle(color = MaterialTheme.colors.onBackgroundSecondary.copy(alpha = color.alpha))
             }
         }
+    }
+}
+
+@Composable
+private fun DropdownTriangle(color: Color) {
+    Canvas(modifier = Modifier.size(width = 9.dp, height = 5.dp)) {
+        val path = Path().apply {
+            moveTo(0f, 0f)
+            lineTo(size.width, 0f)
+            lineTo(size.width / 2f, size.height)
+            close()
+        }
+
+        drawPath(path, color)
     }
 }
 

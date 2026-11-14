@@ -1214,7 +1214,11 @@ private fun SummaryDescriptionField(
         if (echoIndex >= 0) {
             // Our own edit coming back: drop it and any older edit
             repeat(echoIndex + 1) { pendingEdits.removeAt(0) }
-        } else if (external != (summaryValue.text to descriptionValue.text)) {
+        }
+
+        // With no edits on their way, the fields must show the external value. This also covers an external change
+        // that happens to match an old edit that never came back (e.g. the message cleared after committing).
+        if (pendingEdits.isEmpty() && external != (summaryValue.text to descriptionValue.text)) {
             pendingEdits.clear()
             summaryValue = TextFieldValue(summary, TextRange(summary.length))
             descriptionValue = TextFieldValue(description, TextRange(description.length))

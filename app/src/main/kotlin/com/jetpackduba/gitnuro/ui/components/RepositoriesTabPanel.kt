@@ -182,7 +182,8 @@ fun Tab(
 
     Box(
         modifier = modifier
-            .widthIn(min = 200.dp)
+            // As wide as the name (within limits): short names don't leave a big empty space
+            .widthIn(min = 110.dp)
             .width(IntrinsicSize.Max)
             .fillMaxHeight()
             .hoverable(hoverInteraction)
@@ -201,9 +202,9 @@ fun Tab(
             Text(
                 text = title,
                 modifier = Modifier
-                    .padding(start = 16.dp)
+                    .padding(start = 12.dp)
                     .weight(1f)
-                    .widthIn(max = 720.dp),
+                    .widthIn(max = 220.dp),
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.body2,
                 fontWeight = FontWeight.Medium,
@@ -217,7 +218,7 @@ fun Tab(
                 enabled = isHovered || isSelected,
                 modifier = Modifier
                     .alpha(if (isHovered || isSelected) 1f else 0f)
-                    .padding(horizontal = 8.dp)
+                    .padding(start = 10.dp, end = 8.dp)
                     .size(14.dp)
             ) {
                 Icon(

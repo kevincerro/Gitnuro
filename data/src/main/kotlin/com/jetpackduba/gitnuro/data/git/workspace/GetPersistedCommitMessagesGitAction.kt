@@ -1,6 +1,7 @@
 package com.jetpackduba.gitnuro.data.git.workspace
 
 import com.jetpackduba.gitnuro.data.git.JGit
+import com.jetpackduba.gitnuro.data.git.repository.readCommitDraft
 import com.jetpackduba.gitnuro.domain.errors.AppError
 import com.jetpackduba.gitnuro.domain.errors.Either
 import com.jetpackduba.gitnuro.domain.interfaces.IGetPersistedCommitMessagesGitAction
@@ -12,7 +13,7 @@ class GetPersistedCommitMessagesGitAction @Inject constructor(
 ) : IGetPersistedCommitMessagesGitAction {
     override suspend fun invoke(repositoryPath: String): Either<PersistedCommitMessage, AppError> {
         return jgit.provide(repositoryPath) { git ->
-            val commitMessage = git.repository.readCommitEditMsg()
+            val commitMessage = readCommitDraft(git.repository)
             val mergeMessage = git.repository.readMergeCommitMsg()
             val squashMessage = git.repository.readSquashCommitMsg()
 
