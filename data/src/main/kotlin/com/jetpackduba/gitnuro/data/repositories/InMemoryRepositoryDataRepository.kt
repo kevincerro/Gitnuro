@@ -55,6 +55,10 @@ class InMemoryRepositoryDataRepository @Inject constructor() : RepositoryDataRep
 
     override var maxCommitsToLoadLimit: Int = 0
 
+    override var pinnedBranchName: String? = null
+
+    override var soloBranchName: String? = null
+
     override val repositoryPath: String?
         get() {
             return when (val state = repositorySelectionState.value) {

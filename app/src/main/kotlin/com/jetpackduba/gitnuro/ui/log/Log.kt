@@ -211,8 +211,14 @@ fun Log(
             .toMap()
     }
 
+    val pinnedBranchName by viewModel.pinnedBranchName.collectAsState()
+    val soloBranchName by viewModel.soloBranchName.collectAsState()
+
     Box(modifier) {
-        CompositionLocalProvider(LocalRemoteAvatars provides remoteAvatars) {
+        CompositionLocalProvider(
+            LocalRemoteAvatars provides remoteAvatars,
+            LocalGraphBranchOptions provides GraphBranchOptions(pinnedBranchName, soloBranchName),
+        ) {
         LogView(
             logState = logStatus,
             selectedItem = selectedItem,
@@ -787,7 +793,13 @@ fun CommitsList(
                         // The worktree only needs a folder, picked with the system dialog
                         scope.launch {
                             chooseWorktreeDirectory()?.let { path ->
-                                onAction(LogAction.CreateWorktree(request.commit, path))
+                                val branch = request.branch
+
+                                if (branch != null) {
+                                    onAction(LogAction.CreateWorktreeFromBranch(branch, path))
+                                } else {
+                                    onAction(LogAction.CreateWorktree(request.commit, path))
+                                }
                             }
                         }
                     } else {
@@ -1148,23 +1160,80 @@ private fun CommitLine(
         if (isStash) emptyList() else buildLogRefs(branches, tags, currentBranch)
     }
 
-    val branchMenuItems: (Branch) -> List<ContextMenuElement> = { branch ->
-        branchContextMenuItems(
-            branch = branch,
+    val graphBranchOptions = LocalGraphBranchOptions.current
+    val clipboard = LocalClipboard.current
+    val menuScope = rememberCoroutineScope()
+
+    val onBranchRefAction: (BranchRefMenuAction) -> Unit = { action ->
+        val commit = graphNode.commit
+
+        when (action) {
+            is BranchRefMenuAction.Pull -> onLogAction(LogAction.PullBranch(action.branch))
+            is BranchRefMenuAction.Push -> onLogAction(LogAction.PushBranch(action.branch))
+            is BranchRefMenuAction.SetUpstream -> onChangeDefaultUpstreamBranch(action.branch)
+            is BranchRefMenuAction.FastForwardToCurrent -> onLogAction(LogAction.FastForwardToCurrent(action.branch))
+            is BranchRefMenuAction.Merge -> onMergeBranch(action.branch)
+            is BranchRefMenuAction.Rebase -> onRebaseBranch(action.branch)
+            // Rebasing the commits after the branch's commit is rebasing the current branch onto it
+            BranchRefMenuAction.InteractiveRebaseOnto -> onRebaseInteractive()
+            is BranchRefMenuAction.CheckoutBranch -> if (action.branch.isRemote) {
+                onCheckoutRemoteBranch(action.branch)
+            } else {
+                onCheckoutBranch(action.branch)
+            }
+
+            BranchRefMenuAction.CheckoutCommit -> onCheckoutCommit()
+            is BranchRefMenuAction.CreateWorktreeFromBranch ->
+                onShowCommitDialog(CommitDialogRequest.Worktree(commit, action.branch))
+
+            BranchRefMenuAction.CreateWorktreeFromCommit -> onShowCommitDialog(CommitDialogRequest.Worktree(commit))
+            BranchRefMenuAction.CreateBranch -> showCreateNewBranch()
+            BranchRefMenuAction.CherryPick -> onCherryPickCommit()
+            is BranchRefMenuAction.Reset -> onLogAction(LogAction.ResetToCommit(commit, action.type))
+            BranchRefMenuAction.Revert -> onRevertCommit()
+            BranchRefMenuAction.InteractiveRebaseChildren -> onRebaseInteractive()
+            BranchRefMenuAction.EditMessage -> onShowCommitDialog(CommitDialogRequest.EditMessage(commit))
+            BranchRefMenuAction.Drop -> onLogAction(LogAction.DropCommit(commit))
+            is BranchRefMenuAction.Move -> onLogAction(LogAction.MoveCommit(commit, up = action.up))
+            is BranchRefMenuAction.Rename -> onRenameBranch(action.branch)
+            is BranchRefMenuAction.Delete -> onDeleteBranch(action.branch)
+            is BranchRefMenuAction.DeleteRemote -> onDeleteRemoteBranch(action.branch)
+            is BranchRefMenuAction.DeleteLocalAndRemote ->
+                onLogAction(LogAction.DeleteLocalAndRemoteBranch(action.local, action.remote))
+
+            is BranchRefMenuAction.CopyBranchName -> onCopyBranchNameToClipboard(action.branch)
+            BranchRefMenuAction.CopyCommitSha -> menuScope.launch { clipboard.setClipboardText(commit.hash) }
+            BranchRefMenuAction.CreatePatch -> onLogAction(LogAction.CreatePatch(commit))
+            BranchRefMenuAction.ApplyPatch -> onLogAction(LogAction.ApplyPatch)
+            BranchRefMenuAction.CompareWithWorkingDirectory -> onLogAction(LogAction.CompareWithWorkingDirectory(commit))
+            is BranchRefMenuAction.Pin -> onLogAction(LogAction.PinBranch(action.branch))
+            is BranchRefMenuAction.Solo -> onLogAction(LogAction.SoloBranch(action.branch))
+            BranchRefMenuAction.CreateTag -> showCreateNewTag()
+            BranchRefMenuAction.CreateAnnotatedTag -> onShowCommitDialog(CommitDialogRequest.AnnotatedTag(commit))
+        }
+    }
+
+    // Menu of a badge: its local branch and/or its remote one
+    val branchRefMenuItems: (local: Branch?, remote: Branch?) -> List<ContextMenuElement> = { local, remote ->
+        branchRefContextMenu(
+            local = local,
+            remote = remote,
             currentBranch = currentBranch,
-            isCurrentBranch = branch.isSameBranch(currentBranch),
-            isLocal = branch.isLocal,
-            onCheckoutBranch = { if (it.isRemote) onCheckoutRemoteBranch(it) else onCheckoutBranch(it) },
-            onMergeBranch = onMergeBranch,
-            onDeleteBranch = onDeleteBranch,
-            onDeleteRemoteBranch = onDeleteRemoteBranch,
-            onRebaseBranch = onRebaseBranch,
-            onPushToRemoteBranch = onPushToRemoteBranch,
-            onPullFromRemoteBranch = onPullFromRemoteBranch,
-            onChangeDefaultUpstreamBranch = onChangeDefaultUpstreamBranch,
-            onRenameBranch = onRenameBranch,
-            onCopyBranchNameToClipboard = onCopyBranchNameToClipboard,
+            shortHash = graphNode.commit.hash.take(6),
+            isLastCommitOfCurrentBranch = isLastCommitOfCurrentBranch,
+            isFirstCommit = graphNode.commit.parentsHashes.isEmpty(),
+            pinnedBranchName = graphBranchOptions.pinnedBranchName,
+            soloBranchName = graphBranchOptions.soloBranchName,
+            onAction = onBranchRefAction,
         )
+    }
+
+    val branchRefMenu: (LogRef.BranchRef) -> List<ContextMenuElement> = { ref ->
+        if (ref.branch.isLocal) {
+            branchRefMenuItems(ref.branch, ref.trackingRemoteBranch)
+        } else {
+            branchRefMenuItems(null, ref.branch)
+        }
     }
 
     ContextMenu(
@@ -1175,6 +1244,10 @@ private fun CommitLine(
                     onPop = onPopStash,
                     onDelete = onDeleteStash,
                 )
+            } else if (refs.count { it is LogRef.BranchRef } == 1) {
+                // Like GitKraken, with a single branch (badge) in the commit its menu is shown directly, it already
+                // includes the commit's options
+                branchRefMenu(refs.filterIsInstance<LogRef.BranchRef>().single())
             } else {
                 val commit = graphNode.commit
 
@@ -1183,7 +1256,12 @@ private fun CommitLine(
                     currentBranchName = currentBranch?.simpleName,
                     isLastCommit = isLastCommitOfCurrentBranch,
                     isFirstCommit = commit.parentsHashes.isEmpty(),
-                    branchesAtCommit = branches.map { branch -> branch.simpleName to branchMenuItems(branch) },
+                    branchesAtCommit = refs
+                        .filterIsInstance<LogRef.BranchRef>()
+                        .map { ref ->
+                            val name = if (ref.branch.isLocal) ref.name else ref.branch.simpleNameWithRemote
+                            name to branchRefMenu(ref)
+                        },
                     onCheckoutCommit = onCheckoutCommit,
                     onCreateWorktree = { onShowCommitDialog(CommitDialogRequest.Worktree(commit)) },
                     onCreateNewBranch = showCreateNewBranch,
@@ -1197,6 +1275,8 @@ private fun CommitLine(
                     onMoveCommitDown = { onLogAction(LogAction.MoveCommit(commit, up = false)) },
                     onCreateNewTag = showCreateNewTag,
                     onCreateAnnotatedTag = { onShowCommitDialog(CommitDialogRequest.AnnotatedTag(commit)) },
+                    onApplyPatch = { onLogAction(LogAction.ApplyPatch) },
+                    onCompareWithWorkingDirectory = { onLogAction(LogAction.CompareWithWorkingDirectory(commit)) },
                 )
             }
         },
@@ -1230,14 +1310,14 @@ private fun CommitLine(
                     },
                     onGenerateContextMenu = { ref ->
                         when (ref) {
-                            is LogRef.BranchRef -> branchMenuItems(ref.branch)
+                            is LogRef.BranchRef -> branchRefMenu(ref)
                             is LogRef.TagRef -> tagContextMenuItems(
                                 onCheckoutTag = { onCheckoutTag(ref.tag) },
                                 onDeleteTag = { onDeleteTag(ref.tag) },
                             )
                         }
                     },
-                    onGenerateRemoteContextMenu = branchMenuItems,
+                    onGenerateRemoteContextMenu = { remoteBranch -> branchRefMenuItems(null, remoteBranch) },
                 )
 
                 Box(
@@ -1985,8 +2065,15 @@ sealed interface CommitDialogRequest {
 
     data class EditMessage(override val commit: Commit) : CommitDialogRequest
     data class AnnotatedTag(override val commit: Commit) : CommitDialogRequest
-    data class Worktree(override val commit: Commit) : CommitDialogRequest
+
+    /** Worktree of the commit, or of [branch] when it's set */
+    data class Worktree(override val commit: Commit, val branch: Branch? = null) : CommitDialogRequest
 }
+
+/** Branches pinned to the left of the graph and soloed (by full name), displayed as checked in the badges' menus */
+private data class GraphBranchOptions(val pinnedBranchName: String?, val soloBranchName: String?)
+
+private val LocalGraphBranchOptions = compositionLocalOf { GraphBranchOptions(null, null) }
 
 private suspend fun chooseWorktreeDirectory(): String? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
     val isMac = System.getProperty("os.name").orEmpty().lowercase().contains("mac")

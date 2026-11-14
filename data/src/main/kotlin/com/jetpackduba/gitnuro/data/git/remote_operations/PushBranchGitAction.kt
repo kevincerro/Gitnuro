@@ -34,10 +34,12 @@ class PushBranchGitAction @Inject constructor(
         pushTags: Boolean,
         pushWithLease: Boolean,
         specificBranch: Branch?,
+        localBranch: Branch?,
     ) = jgit.provide(repositoryPath) { git ->
         // TODO most of this should be part of the domain logic
-        val currentBranch = git.repository.branch
-        val fullCurrentBranch = git.repository.fullBranch
+        // The branch to push: the given one or the current one
+        val currentBranch = localBranch?.simpleName ?: git.repository.branch
+        val fullCurrentBranch = localBranch?.name ?: git.repository.fullBranch
 
         val tracking = if (specificBranch == null) {
             getTrackingBranchGitAction(repositoryPath, currentBranch).bind()

@@ -63,6 +63,7 @@ import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import java.io.File
 import java.io.FileInputStream
 import kotlin.math.max
 
@@ -88,6 +89,8 @@ fun DiffPane(
     val viewDiffResult = diffResultState.value ?: return
     val isRepositoryInSafeState by viewModel.isRepositoryInSafeState.collectAsState(false)
     val focusRequester = remember { FocusRequester() }
+    val statusState by viewModel.statusState.collectAsState()
+    val repositoryPath = statusState.repositoryPath
 
     fun closeDiffView() {
         viewModel.clearDiff()
@@ -137,75 +140,102 @@ fun DiffPane(
 
                 val scrollState by viewModel.lazyListState.collectAsState()
 
-                when (diffResult) {
-                    is DiffResult.TextSplit -> HunkSplitTextDiff(
-                        diffType = diffType,
-                        scrollState = scrollState,
-                        diffResult = diffResult,
-                        canUseHunkActions = isRepositoryInSafeState,
-                        onUnstageHunk = { entry, hunk ->
-                            viewModel.unstageHunk(entry, hunk)
-                        },
-                        onStageHunk = { entry, hunk ->
-                            viewModel.stageHunk(entry, hunk)
-                        },
-                        onResetHunk = { entry, hunk ->
-                            viewModel.resetHunk(entry, hunk)
-                        },
-                        onUnStageLine = { entry, hunk, line ->
-                            if (diffType is DiffType.UncommittedDiff) {
-                                if (diffType.entryType == EntryType.STAGED)
-                                    viewModel.unstageHunkLine(entry, hunk, line)
-                                else {
-                                    viewModel.stageHunkLine(entry, hunk, line)
+                val diffContent: @Composable () -> Unit = {
+                    when (diffResult) {
+                        is DiffResult.TextSplit -> HunkSplitTextDiff(
+                            diffType = diffType,
+                            scrollState = scrollState,
+                            diffResult = diffResult,
+                            canUseHunkActions = isRepositoryInSafeState,
+                            onUnstageHunk = { entry, hunk ->
+                                viewModel.unstageHunk(entry, hunk)
+                            },
+                            onStageHunk = { entry, hunk ->
+                                viewModel.stageHunk(entry, hunk)
+                            },
+                            onResetHunk = { entry, hunk ->
+                                viewModel.resetHunk(entry, hunk)
+                            },
+                            onUnStageLine = { entry, hunk, line ->
+                                if (diffType is DiffType.UncommittedDiff) {
+                                    if (diffType.entryType == EntryType.STAGED)
+                                        viewModel.unstageHunkLine(entry, hunk, line)
+                                    else {
+                                        viewModel.stageHunkLine(entry, hunk, line)
+                                    }
                                 }
+                            },
+                            onDiscardLine = { entry, hunk, line ->
+                                viewModel.discardHunkLine(entry, hunk, line)
                             }
-                        },
-                        onDiscardLine = { entry, hunk, line ->
-                            viewModel.discardHunkLine(entry, hunk, line)
-                        }
-                    )
-
-                    is DiffResult.Text -> HunkUnifiedTextDiff(
-                        diffType = diffType,
-                        scrollState = scrollState,
-                        diffResult = diffResult,
-                        canUseHunkActions = isRepositoryInSafeState,
-                        onUnstageHunk = { entry, hunk ->
-                            viewModel.unstageHunk(entry, hunk)
-                        },
-                        onStageHunk = { entry, hunk ->
-                            viewModel.stageHunk(entry, hunk)
-                        },
-                        onResetHunk = { entry, hunk ->
-                            viewModel.resetHunk(entry, hunk)
-                        },
-                        onUnStageLine = { entry, hunk, line ->
-                            if (diffType is DiffType.UncommittedDiff) {
-                                if (diffType.entryType == EntryType.STAGED)
-                                    viewModel.unstageHunkLine(entry, hunk, line)
-                                else {
-                                    viewModel.stageHunkLine(entry, hunk, line)
-                                }
-                            }
-                        },
-                        onDiscardLine = { entry, hunk, line ->
-                            viewModel.discardHunkLine(entry, hunk, line)
-                        }
-                    )
-
-                    is DiffResult.NonText -> {
-                        NonTextDiff(
-                            diffResult,
-                            onOpenFileWithExternalApp = { path -> viewModel.openFileWithExternalApp(path) })
-                    }
-
-                    is DiffResult.Submodule -> {
-                        SubmoduleDiff(
-                            diffResult,
-                            onOpenSubmodule = { viewModel.openSubmodule(diffResult.diffEntry.filePath) }
                         )
+
+                        is DiffResult.Text -> HunkUnifiedTextDiff(
+                            diffType = diffType,
+                            scrollState = scrollState,
+                            diffResult = diffResult,
+                            canUseHunkActions = isRepositoryInSafeState,
+                            onUnstageHunk = { entry, hunk ->
+                                viewModel.unstageHunk(entry, hunk)
+                            },
+                            onStageHunk = { entry, hunk ->
+                                viewModel.stageHunk(entry, hunk)
+                            },
+                            onResetHunk = { entry, hunk ->
+                                viewModel.resetHunk(entry, hunk)
+                            },
+                            onUnStageLine = { entry, hunk, line ->
+                                if (diffType is DiffType.UncommittedDiff) {
+                                    if (diffType.entryType == EntryType.STAGED)
+                                        viewModel.unstageHunkLine(entry, hunk, line)
+                                    else {
+                                        viewModel.stageHunkLine(entry, hunk, line)
+                                    }
+                                }
+                            },
+                            onDiscardLine = { entry, hunk, line ->
+                                viewModel.discardHunkLine(entry, hunk, line)
+                            }
+                        )
+
+                        is DiffResult.NonText -> {
+                            NonTextDiff(
+                                diffResult,
+                                onOpenFileWithExternalApp = { path -> viewModel.openFileWithExternalApp(path) })
+                        }
+
+                        is DiffResult.Submodule -> {
+                            SubmoduleDiff(
+                                diffResult,
+                                onOpenSubmodule = { viewModel.openSubmodule(diffResult.diffEntry.filePath) }
+                            )
+                        }
                     }
+                }
+
+                val conflictFile = remember(diffType, repositoryPath) {
+                    val path = repositoryPath
+
+                    if (
+                        diffType is DiffType.UncommittedDiff &&
+                        diffType.statusType == StatusType.CONFLICTING &&
+                        path != null
+                    ) {
+                        File(path, diffType.statusEntry.filePath)
+                    } else {
+                        null
+                    }
+                }
+
+                if (conflictFile != null && diffType is DiffType.UncommittedDiff) {
+                    // Files with conflict markers are resolved visually instead of showing their raw text
+                    ConflictResolver(
+                        file = conflictFile,
+                        onResolved = { viewModel.stageFile(diffType.statusEntry) },
+                        fallback = diffContent,
+                    )
+                } else {
+                    diffContent()
                 }
             }
 

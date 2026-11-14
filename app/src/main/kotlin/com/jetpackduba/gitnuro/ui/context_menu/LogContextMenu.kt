@@ -24,6 +24,8 @@ fun logContextMenu(
     onMoveCommitDown: () -> Unit,
     onCreateNewTag: () -> Unit,
     onCreateAnnotatedTag: () -> Unit,
+    onApplyPatch: () -> Unit,
+    onCompareWithWorkingDirectory: () -> Unit,
 ) = mutableListOf<ContextMenuElement>().apply {
     fun entry(label: String, onClick: () -> Unit) = add(ContextMenuElement.ContextTextEntry(label, onClick = onClick))
 
@@ -69,6 +71,9 @@ fun logContextMenu(
         entry("Move commit down", onMoveCommitDown)
     }
 
+    add(ContextMenuElement.ContextSeparator)
+    entry("Apply patch", onApplyPatch)
+
     if (branchesAtCommit.isNotEmpty()) {
         add(ContextMenuElement.ContextSeparator)
 
@@ -76,6 +81,9 @@ fun logContextMenu(
             add(ContextMenuElement.ContextSubmenu(composableLabel = { name }, items = items))
         }
     }
+
+    add(ContextMenuElement.ContextSeparator)
+    entry("Compare commit against working directory", onCompareWithWorkingDirectory)
 
     add(ContextMenuElement.ContextSeparator)
     entry("Create tag here", onCreateNewTag)

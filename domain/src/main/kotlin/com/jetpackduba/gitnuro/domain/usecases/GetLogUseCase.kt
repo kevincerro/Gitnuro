@@ -35,17 +35,33 @@ class GetLogUseCase @Inject constructor(
         val remoteBranches = getRemotesUseCase().okOrNull().orEmpty().flatMap { it.branchesList }
         val stashes = getStashListGitAction(repository).okOrNull().orEmpty().map { it.hash }
 
-        val hashes = branches.map { it.hash } +
-                stashes +
-                tags.map { it.commitHash } +
-                remoteBranches.map { it.hash }
+        val allBranches = branches + remoteBranches
+
+        // "Solo": only the history of that branch. If it doesn't exist anymore, everything is shown
+        val soloBranch = repositoryDataRepository.soloBranchName
+            ?.let { name -> allBranches.firstOrNull { it.name == name } }
+
+        val hashes = if (soloBranch != null) {
+            listOf(soloBranch.hash)
+        } else {
+            branches.map { it.hash } +
+                    stashes +
+                    tags.map { it.commitHash } +
+                    remoteBranches.map { it.hash }
+        }
+
+        // "Pin to Left" goes before keeping the current branch in the first lane when there are uncommitted changes
+        val pinnedBranchHash = repositoryDataRepository.pinnedBranchName
+            ?.let { name -> allBranches.firstOrNull { it.name == name } }
+            ?.hash
+            ?.takeIf { soloBranch == null || it == soloBranch.hash }
 
         val r = graphLogGenerator.generate(
             repository,
             maxCommits = max(repositoryDataRepository.maxCommitsToLoadLimit, INITIAL_COMMITS_LOAD),
             hashes,
             HashSet(stashes),
-            forcedFirstLaneBranchHash = if (hasUncommittedChanges) currentBranch?.hash else null,
+            forcedFirstLaneBranchHash = pinnedBranchHash ?: if (hasUncommittedChanges) currentBranch?.hash else null,
             pagination = pagination,
         )
 

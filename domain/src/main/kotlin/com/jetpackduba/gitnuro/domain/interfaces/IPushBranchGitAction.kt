@@ -11,5 +11,7 @@ interface IPushBranchGitAction {
         pushTags: Boolean,
         pushWithLease: Boolean,
         specificBranch: Branch? = null,
+        /** Local branch to push, the current one when null */
+        localBranch: Branch? = null,
     ): Either<Unit, GitError>
 }

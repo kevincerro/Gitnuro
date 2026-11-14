@@ -33,4 +33,16 @@ sealed interface LogAction {
     data class DropCommit(val commit: Commit) : LogAction
     data class MoveCommit(val commit: Commit, val up: Boolean) : LogAction
     data class CreateAnnotatedTag(val commit: Commit, val name: String, val message: String) : LogAction
+
+    /** The current branch is pulled as usual, any other local branch is fast-forwarded to its upstream */
+    data class PullBranch(val branch: Branch) : LogAction
+    data class PushBranch(val branch: Branch) : LogAction
+    data class FastForwardToCurrent(val branch: Branch) : LogAction
+    data class CreateWorktreeFromBranch(val branch: Branch, val path: String) : LogAction
+    data class DeleteLocalAndRemoteBranch(val local: Branch, val remote: Branch) : LogAction
+    data class CreatePatch(val commit: Commit) : LogAction
+    data class PinBranch(val branch: Branch?) : LogAction
+    data class SoloBranch(val branch: Branch?) : LogAction
+    data object ApplyPatch : LogAction
+    data class CompareWithWorkingDirectory(val commit: Commit) : LogAction
 }

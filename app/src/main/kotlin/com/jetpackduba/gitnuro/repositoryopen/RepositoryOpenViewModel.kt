@@ -12,6 +12,7 @@ import com.jetpackduba.gitnuro.common.flows.invert
 import com.jetpackduba.gitnuro.common.printLog
 import com.jetpackduba.gitnuro.domain.TabCoroutineScope
 import com.jetpackduba.gitnuro.domain.errors.Either
+import com.jetpackduba.gitnuro.domain.errors.GenericError
 import com.jetpackduba.gitnuro.domain.errors.okOrNull
 import com.jetpackduba.gitnuro.domain.exceptions.InvalidMessageException
 import com.jetpackduba.gitnuro.domain.extensions.lowercaseContains
@@ -928,7 +929,85 @@ class RepositoryOpenViewModel @Inject constructor(
             is LogAction.MoveCommit -> rewriteHistoryUseCase.move(action.commit, action.up)
             is LogAction.CreateAnnotatedTag ->
                 createTagUseCase(action.name, action.commit, action.message)
+
+            is LogAction.PullBranch -> pullBranch(action.branch)
+            is LogAction.PushBranch -> pushBranch(action.branch)
+            is LogAction.FastForwardToCurrent -> fastForwardToCurrent(action.branch)
+            is LogAction.CreateWorktreeFromBranch -> commitHistoryActions.createWorktree(action.branch, action.path)
+            is LogAction.DeleteLocalAndRemoteBranch -> {
+                deleteBranch(action.local)
+                deleteRemoteBranch(action.remote)
+            }
+
+            is LogAction.CreatePatch -> commitHistoryActions.createPatch(action.commit)
+            LogAction.ApplyPatch -> commitHistoryActions.applyPatch()
+            is LogAction.CompareWithWorkingDirectory -> commitHistoryActions.compareWithWorkingDirectory(action.commit)
+            is LogAction.PinBranch -> {
+                repositoryDataRepository.pinnedBranchName = action.branch?.name
+                pinnedBranchName.value = action.branch?.name
+                refreshDataUseCase(DataToRefresh.LOG)
+            }
+
+            is LogAction.SoloBranch -> {
+                repositoryDataRepository.soloBranchName = action.branch?.name
+                soloBranchName.value = action.branch?.name
+                refreshDataUseCase(DataToRefresh.LOG)
+            }
         }
+    }
+
+    /** Full name of the branch pinned to the first lane of the graph, if any */
+    val pinnedBranchName: StateFlow<String?>
+        field = MutableStateFlow<String?>(null)
+
+    /** Full name of the only branch whose history is shown in the graph, if any */
+    val soloBranchName: StateFlow<String?>
+        field = MutableStateFlow<String?>(null)
+
+    private fun isCurrentBranch(branch: Branch): Boolean {
+        return branch.isLocal && branch.isSameBranch(currentBranch.value.data)
+    }
+
+    /**
+     * Pull from a branch's context menu. A branch that isn't checked out can't be merged, so it's only fast-forwarded
+     * to its upstream after fetching (like GitKraken).
+     */
+    private fun pullBranch(branch: Branch) {
+        if (isCurrentBranch(branch)) {
+            pull(PullType.MERGE)
+            return
+        }
+
+        viewModelScope.launch {
+            val upstream = commitHistoryActions.upstreamOf(branch)
+
+            if (upstream == null) {
+                repositoryStateRepository.addCompletedTaskFailed(
+                    TaskType.Pull(null),
+                    GenericError("${branch.simpleName} has no upstream branch to pull from. Set one with \"Set Upstream\"."),
+                    FailureSeverity.HIGH,
+                )
+                return@launch
+            }
+
+            fetchAllUseCase().join()
+            commitHistoryActions.fastForward(branch, upstream, "${branch.simpleName} updated")
+        }
+    }
+
+    private fun pushBranch(branch: Branch) {
+        if (isCurrentBranch(branch)) {
+            push(force = false, pushTags = false)
+        } else {
+            // Through JGit like the rest of remote operations, so it uses the same credentials
+            pushBranchUseCase(force = false, pushTags = false, localBranch = branch)
+        }
+    }
+
+    private fun fastForwardToCurrent(branch: Branch) {
+        val current = currentBranch.value.data ?: return
+
+        commitHistoryActions.fastForward(branch, current.name, "${branch.simpleName} fast-forwarded to ${current.simpleName}")
     }
 
     private fun checkoutTag(tag: Tag) = checkoutCommitUseCase(tag.commitHash)

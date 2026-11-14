@@ -13,14 +13,22 @@ class PushBranchUseCase @Inject constructor(
     private val globalSettingsService: GlobalSettingsService,
     private val useCaseExecutor: UseCaseExecutor,
 ) {
-    operator fun invoke(force: Boolean, pushTags: Boolean, targetRemoteBranch: Branch? = null) {
+    /**
+     * @param localBranch local branch to push (to its upstream), the current one when null
+     */
+    operator fun invoke(
+        force: Boolean,
+        pushTags: Boolean,
+        targetRemoteBranch: Branch? = null,
+        localBranch: Branch? = null,
+    ) {
         useCaseExecutor.executeLaunch(
             taskType = TaskType.Push(targetRemoteBranch),
             dataToRefresh = arrayOf(DataToRefresh.LOG, DataToRefresh.REMOTES, DataToRefresh.BRANCHES),
         ) { repositoryPath ->
             val pushWithLease = globalSettingsService.pushWithLease.first()
 
-            pushBranchGitAction(repositoryPath, force, pushTags, pushWithLease, targetRemoteBranch)
+            pushBranchGitAction(repositoryPath, force, pushTags, pushWithLease, targetRemoteBranch, localBranch)
         }
     }
 }

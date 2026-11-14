@@ -4,14 +4,15 @@ import com.jetpackduba.gitnuro.domain.UseCaseExecutor
 import com.jetpackduba.gitnuro.domain.interfaces.IFetchAllRemotesGitAction
 import com.jetpackduba.gitnuro.domain.models.Remote
 import com.jetpackduba.gitnuro.domain.models.TaskType
+import kotlinx.coroutines.Job
 import javax.inject.Inject
 
 class FetchAllBranchUseCase @Inject constructor(
     private val fetchAllGitAction: IFetchAllRemotesGitAction,
     private val useCaseExecutor: UseCaseExecutor,
 ) {
-    operator fun invoke(specificRemote: Remote? = null) {
-        useCaseExecutor.executeLaunch(
+    operator fun invoke(specificRemote: Remote? = null): Job {
+        return useCaseExecutor.executeLaunch(
             taskType = TaskType.Fetch,
             refreshEvenIfFailed = true,
             // The remote branches (and the tags) are what a fetch moves: without refreshing them the graph gets the

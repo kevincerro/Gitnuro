@@ -23,6 +23,12 @@ interface RepositoryDataRepository {
     val persistedCommitMessage: Flow<DataState<PersistedCommitMessage>>
     var maxCommitsToLoadLimit: Int
 
+    /** Full name of the branch shown in the first lane of the graph ("Pin to Left"), if any */
+    var pinnedBranchName: String?
+
+    /** Full name of the only branch whose history is shown in the graph ("Solo"), if any */
+    var soloBranchName: String?
+
     fun setRepositorySelectionState(state: RepositorySelectionState)
     fun clearAll()
     suspend fun updateStatus(block: suspend () -> Either<Status, AppError>)
