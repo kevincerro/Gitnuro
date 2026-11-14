@@ -4,6 +4,11 @@ package com.jetpackduba.gitnuro
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.window.WindowDraggableArea
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.LocalTextContextMenu
 import androidx.compose.material.MaterialTheme
@@ -20,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.rememberWindowState
 import androidx.navigation3.runtime.NavKey
 import com.jetpackduba.gitnuro.app.generated.resources.Res
@@ -73,6 +79,7 @@ import javax.inject.Inject
  * scale chosen in the settings.
  */
 private const val UI_FONT_SCALE = 0.9f
+
 
 private const val TAG = "App"
 private const val MAX_CHARS_CURRENT_TAB_NAME = 250
@@ -219,6 +226,22 @@ class App @Inject constructor(
                 state = windowState,
                 icon = painterResource(Res.drawable.logo),
             ) {
+                val isMac = currentOs == OS.MAC
+
+                // On macOS the content goes under a transparent title bar (like GitKraken), and the app draws the title
+                // bar's strip itself. Besides the look, it avoids an AWT bug: tiling an already zoomed window to fill
+                // the screen hides the title bar without AWT noticing, so it kept placing the content below it and
+                // every hover/click landed one title bar height away from the pointer. With the content always at the
+                // top of the window, its position doesn't depend on the title bar anymore.
+                if (isMac) {
+                    DisposableEffect(window) {
+                        window.rootPane.putClientProperty("apple.awt.fullWindowContent", true)
+                        window.rootPane.putClientProperty("apple.awt.transparentTitleBar", true)
+                        window.rootPane.putClientProperty("apple.awt.windowTitleVisible", false)
+                        onDispose {}
+                    }
+                }
+
                 val compositionValues: MutableList<ProvidedValue<*>> =
                     mutableListOf(LocalTextContextMenu provides AppPopupMenu())
 
@@ -252,8 +275,26 @@ class App @Inject constructor(
                         customTheme = customTheme,
                         linesHeightType = linesHeightType,
                     ) {
-                        Box(modifier = Modifier.background(MaterialTheme.colors.background)) {
-                            AppTabs()
+                        Column(modifier = Modifier.background(MaterialTheme.colors.background)) {
+                            // In macOS full screen there's no title bar
+                            if (isMac && windowState.placement != WindowPlacement.Fullscreen) {
+                                MacTitleBar(
+                                    title = "${System.getenv("title") ?: AppConstants.APP_NAME} - $currentTabName",
+                                    // Sizes in points, whatever the scale chosen in the settings
+                                    pointSize = 1f / (scale ?: 1f),
+                                    onToggleZoom = {
+                                        windowState.placement = if (windowState.placement == WindowPlacement.Maximized) {
+                                            WindowPlacement.Floating
+                                        } else {
+                                            WindowPlacement.Maximized
+                                        }
+                                    },
+                                )
+                            }
+
+                            Box(modifier = Modifier.weight(1f)) {
+                                AppTabs()
+                            }
                         }
                     }
                 }
@@ -426,6 +467,49 @@ fun LoadingRepository(repoPath: String) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Opening repository", fontSize = 36.sp, color = MaterialTheme.colors.onBackground)
             Text(repoPath, fontSize = 24.sp, color = MaterialTheme.colors.onBackgroundSecondary)
+        }
+    }
+}
+
+/** Height of macOS' title bar, in points */
+private const val MAC_TITLE_BAR_HEIGHT = 28f
+
+/** Space taken by the close/minimize/zoom buttons at the start of the title bar, in points */
+private const val MAC_TRAFFIC_LIGHTS_WIDTH = 78f
+
+/**
+ * Strip drawn under macOS' transparent title bar, with the window's title after the traffic lights (like GitKraken).
+ * It moves the window when dragged and zooms it when double clicked, like a native title bar.
+ *
+ * @param pointSize size of a point in dp (the UI scale setting changes the size of a dp)
+ */
+@Composable
+private fun androidx.compose.ui.window.WindowScope.MacTitleBar(
+    title: String,
+    pointSize: Float,
+    onToggleZoom: () -> Unit,
+) {
+    WindowDraggableArea(
+        modifier = Modifier.pointerInput(Unit) {
+            detectTapGestures(onDoubleTap = { onToggleZoom() })
+        }
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height((MAC_TITLE_BAR_HEIGHT * pointSize).dp)
+                .background(MaterialTheme.colors.background)
+                .padding(start = (MAC_TRAFFIC_LIGHTS_WIDTH * pointSize).dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.body2,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colors.onBackgroundSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

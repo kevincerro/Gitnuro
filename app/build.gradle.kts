@@ -154,6 +154,13 @@ compose.desktop {
     application {
         mainClass = "com.jetpackduba.gitnuro.MainKt"
 
+        // Run and package with the JetBrains Runtime (like hot reload) instead of the JDK running Gradle: it has fixes
+        // for macOS windows that other OpenJDK builds don't (e.g. mouse events offset after tiling the window)
+        javaHome = javaToolchains.launcherFor {
+            languageVersion.set(javaLanguageVersion)
+            vendor.set(JvmVendorSpec.JETBRAINS)
+        }.get().metadata.installationPath.asFile.absolutePath
+
         // ProGuard fails on warnings about optional libraries that aren't bundled (logback, log4j, okhttp platforms...)
         buildTypes.release.proguard {
             isEnabled.set(false)
