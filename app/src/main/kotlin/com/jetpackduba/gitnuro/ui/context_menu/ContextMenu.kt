@@ -374,6 +374,7 @@ private fun MenuEntryRow(
     isHighlighted: Boolean,
     interactionSource: MutableInteractionSource,
     onClick: () -> Unit,
+    onIconClick: (() -> Unit)? = null,
     trailing: @Composable (Color) -> Unit = {},
 ) {
     val contentColor = if (isHighlighted) Color.White else MaterialTheme.colors.onBackground
@@ -395,6 +396,10 @@ private fun MenuEntryRow(
                 modifier = Modifier
                     .padding(end = 8.dp)
                     .size(16.dp)
+                    .run {
+                        // Its own click area: it consumes the press, so the row's click isn't triggered
+                        if (onIconClick != null) handMouseClickable(onClick = onIconClick) else this
+                    }
             ) {
                 if (icon != null) {
                     Icon(
@@ -442,6 +447,12 @@ fun TextEntry(
         onClick = {
             onDismissRequest()
             contextTextEntry.onClick()
+        },
+        onIconClick = contextTextEntry.onIconClick?.let { onIconClick ->
+            {
+                onDismissRequest()
+                onIconClick()
+            }
         },
     )
 }
@@ -529,6 +540,8 @@ sealed class ContextMenuElement(
         val composableLabel: @Composable (() -> String) = { label },
         val icon: @Composable (() -> Painter)? = null,
         onClick: () -> Unit = {},
+        /** When set, clicking the icon runs this instead of [onClick] (e.g. a radio button that only selects) */
+        val onIconClick: (() -> Unit)? = null,
     ) : ContextMenuElement(label, onClick) {
         constructor(
             composableLabel: @Composable (() -> String),

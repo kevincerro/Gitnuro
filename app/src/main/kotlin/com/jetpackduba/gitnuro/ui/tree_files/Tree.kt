@@ -11,59 +11,56 @@ fun <T> entriesToTreeEntry(
 ): List<TreeItem<T>> {
     // In the tree, like GitKraken, each level shows its directories before its files
     val pathsComparator = PathsComparator(directoriesFirst = showAsTree, descending = sortDescending)
-    val sortedEntries = entries.sortedWith { entry1, entry2 ->
-        pathsComparator.compare(onGetEntryPath(entry1), onGetEntryPath(entry2))
-    }
+
+    // The paths are split only once (not in every comparison): these lists can have thousands of files
+    val sortedEntries = entries
+        .map { entry -> SplitPath(entry, onGetEntryPath(entry)) }
+        .sortedWith { entry1, entry2 -> pathsComparator.compare(entry1.parts, entry2.parts) }
 
     if (!showAsTree) {
-        return sortedEntries.map { entry -> entryToTreeFile(entry, onGetEntryPath(entry)) }
+        return sortedEntries.map { entry -> TreeItem.File(entry.data, entry.parts.last(), entry.path, 0) }
     }
 
-    return sortedEntries
-        .asSequence()
-        .flatMap { entry ->
-            val filePath = onGetEntryPath(entry)
-            val parts = filePath.split("/")
+    val contractedDirs = treeContractedDirs.toHashSet()
+    val addedDirs = HashSet<String>()
+    val treeItems = ArrayList<TreeItem<T>>(sortedEntries.size)
 
-            parts.mapIndexed { index, partName ->
-                if (index == parts.lastIndex) {
-                    val isParentDirectoryContracted = treeContractedDirs.any { contractedDir ->
-                        filePath.startsWith("$contractedDir/")
-                    }
+    for (entry in sortedEntries) {
+        val parts = entry.parts
+        val dirPath = StringBuilder()
+        var isParentDirectoryContracted = false
 
-                    if (isParentDirectoryContracted) {
-                        null
-                    } else {
-                        TreeItem.File(entry, partName, filePath, index)
-                    }
-                } else {
-                    val dirPath = parts.slice(0..index).joinToString("/")
-                    val isParentDirectoryContracted = treeContractedDirs.any { contractedDir ->
-                        dirPath.startsWith("$contractedDir/") &&
-                                dirPath != contractedDir
-                    }
-                    val isExactDirectoryContracted = treeContractedDirs.any { contractedDir ->
-                        dirPath == contractedDir
-                    }
+        for (index in 0 until parts.lastIndex) {
+            if (index > 0) {
+                dirPath.append('/')
+            }
+            dirPath.append(parts[index])
 
-                    when {
-                        isParentDirectoryContracted -> null
-                        isExactDirectoryContracted -> TreeItem.Dir(false, partName, dirPath, index)
-                        else -> TreeItem.Dir(true, partName, dirPath, index)
-                    }
-                }
+            val path = dirPath.toString()
+            val isContracted = path in contractedDirs
+
+            // Each directory is added once, the first time one of its files shows up
+            if (addedDirs.add(path)) {
+                treeItems.add(TreeItem.Dir(!isContracted, parts[index], path, index))
+            }
+
+            if (isContracted) {
+                // Nothing inside a contracted directory is shown
+                isParentDirectoryContracted = true
+                break
             }
         }
-        .filterNotNull()
-        .distinct()
-        .toList()
+
+        if (!isParentDirectoryContracted) {
+            treeItems.add(TreeItem.File(entry.data, parts.last(), entry.path, parts.lastIndex))
+        }
+    }
+
+    return treeItems
 }
 
-private fun <T> entryToTreeFile(data: T, path: String): TreeItem.File<T> {
-    val parts = path.split("/")
-    val displayName = parts.last()
-
-    return TreeItem.File(data, displayName, path, 0)
+private class SplitPath<T>(val data: T, val path: String) {
+    val parts: List<String> = path.split("/")
 }
 
 /**
@@ -73,11 +70,8 @@ private fun <T> entryToTreeFile(data: T, path: String): TreeItem.File<T> {
 private class PathsComparator(
     private val directoriesFirst: Boolean = false,
     private val descending: Boolean = false,
-) : Comparator<String> {
-    override fun compare(path1: String, path2: String): Int {
-        val path1Parts = path1.split("/")
-        val path2Parts = path2.split("/")
-
+) : Comparator<List<String>> {
+    override fun compare(path1Parts: List<String>, path2Parts: List<String>): Int {
         val maxIndex = max(path1Parts.count(), path2Parts.count())
 
         for (i in 0 until maxIndex) {
@@ -130,12 +124,18 @@ sealed interface TreeItem<out T> {
  * Returns every directory (and parent directory) that contains at least one of the given paths.
  */
 fun allDirectoriesOf(filePaths: List<String>): List<String> {
-    return filePaths
-        .flatMap { filePath ->
-            val parts = filePath.split("/").dropLast(1)
-            parts.indices.map { index -> parts.slice(0..index).joinToString("/") }
+    val directories = LinkedHashSet<String>()
+
+    for (filePath in filePaths) {
+        var separatorIndex = filePath.indexOf('/')
+
+        while (separatorIndex >= 0) {
+            directories.add(filePath.substring(0, separatorIndex))
+            separatorIndex = filePath.indexOf('/', separatorIndex + 1)
         }
-        .distinct()
+    }
+
+    return directories.toList()
 }
 
 data class TreeExpansionState(

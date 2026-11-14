@@ -414,8 +414,8 @@ fun AppTab(
             }
         }
 
-        // A running task can be waiting for input (passphrase, credentials, author): the loading screen is opaque and
-        // would hide what's behind the dialog, so it's not shown meanwhile
+        // A running task can be waiting for input (passphrase, credentials, author): the loading screen would be
+        // drawn over the dialog asking for it, so it's not shown meanwhile
         val isWaitingForInput = credentialsState is CredentialsRequest ||
                 commitAuthorRequestState is CommitterDataRequestState.WaitingInput
 

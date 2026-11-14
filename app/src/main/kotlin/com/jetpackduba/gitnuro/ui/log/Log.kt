@@ -58,12 +58,14 @@ import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -134,6 +136,17 @@ private const val AVATAR_NODE_SIZE = 22
 private const val MERGE_NODE_SIZE = 10
 private const val STASH_NODE_SIZE = 18
 private const val LINE_STROKE_WIDTH = 2f
+
+/**
+ * Height of the colored band of each row: the same as the commit's node (its avatar), centered on it. The rest of
+ * the row is left empty, so consecutive rows are separated (like GitKraken).
+ */
+private val ROW_BAND_HEIGHT = AVATAR_NODE_SIZE.dp
+
+/** Space left above (and below) the band in a row of [rowHeight] px */
+private fun Density.rowBandInset(rowHeight: Float): Float {
+    return ((rowHeight - ROW_BAND_HEIGHT.toPx()) / 2f).coerceAtLeast(0f)
+}
 
 private const val SELECTED_TINT_ALPHA = 0.35f
 private const val ROW_TINT_ALPHA = 0.13f
@@ -213,7 +226,7 @@ fun Log(
             onChangeUpstreamBranch = onChangeUpstreamBranch,
             onRenameBranch = onRenameBranch,
             onGraphPaddingChange = { newGraphPadding ->
-                graphPadding += newGraphPadding
+                graphPadding = newGraphPadding
                 viewModel.graphPadding = graphPadding
             },
             onRefsWidthChange = { delta ->
@@ -291,10 +304,6 @@ private fun LogView(
             .background(MaterialTheme.colors.background)
             .fillMaxSize()
     ) {
-        var graphWidth = (CANVAS_DEFAULT_WIDTH + graphPadding).dp
-
-        if (graphWidth.value < CANVAS_MIN_WIDTH) graphWidth = CANVAS_MIN_WIDTH.dp
-
         val refsColumnWidth = refsWidth.dp
 
         val maxLinePosition = if (commitList.isNotEmpty())
@@ -302,11 +311,24 @@ private fun LogView(
         else
             MIN_GRAPH_LANES
 
-        var graphRealWidth = (laneCenterX(maxLinePosition + MARGIN_GRAPH_LANES) + LANE_WIDTH / 2).dp
+        // Width that shows every lane of the graph
+        val graphRealWidthValue = (laneCenterX(maxLinePosition + MARGIN_GRAPH_LANES) + LANE_WIDTH / 2)
+            .coerceAtLeast(CANVAS_MIN_WIDTH.toFloat())
 
-        // Using remember(graphRealWidth, graphWidth) makes the selected background color glitch when changing tabs
-        if (graphRealWidth < graphWidth) {
-            graphRealWidth = graphWidth
+        // The column can't be wider than its graph: with all the lanes visible there is nothing else to show (and
+        // nothing to scroll). When it's narrower, the graph is scrolled horizontally.
+        val graphWidthValue = (CANVAS_DEFAULT_WIDTH + graphPadding)
+            .coerceIn(CANVAS_MIN_WIDTH.toFloat(), graphRealWidthValue)
+
+        val graphWidth = graphWidthValue.dp
+        val graphRealWidth = graphRealWidthValue.dp
+
+        // The new width is limited here, from the displayed one: the stored padding never goes beyond the limits, so
+        // dragging back from a limit has effect right away
+        val onGraphWidthDrag: (Float) -> Unit = { delta ->
+            val newWidth = (graphWidthValue + delta).coerceIn(CANVAS_MIN_WIDTH.toFloat(), graphRealWidthValue)
+
+            onGraphPaddingChange(newWidth - CANVAS_DEFAULT_WIDTH)
         }
 
         if (searchFilterValue is LogSearch.SearchResults) {
@@ -319,7 +341,7 @@ private fun LogView(
             refsWidth = refsColumnWidth,
             graphWidth = graphWidth,
             onRefsWidthChange = { onRefsWidthChange(it / density) },
-            onGraphWidthChange = { onGraphPaddingChange(it / density) },
+            onGraphWidthChange = { onGraphWidthDrag(it / density) },
             onShowSearch = {
                 onAction(LogAction.SearchValueChange(""))
             }
@@ -375,7 +397,7 @@ private fun LogView(
             ColumnResizeHandle(
                 position = refsColumnWidth + graphWidth,
                 showLine = false,
-                onDrag = { onGraphPaddingChange(it / density) },
+                onDrag = { onGraphWidthDrag(it / density) },
             )
 
             // Scrollbar used to scroll horizontally the graph nodes
@@ -930,7 +952,7 @@ private fun UncommittedChangesLine(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .backgroundIf(isSelected, MaterialTheme.colors.backgroundSelected)
+                .rowBand(MaterialTheme.colors.backgroundSelected.takeIf { isSelected })
                 .messageLeftBorder(wipColor)
                 .padding(start = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -1027,11 +1049,30 @@ private fun Modifier.laneTint(
 ) = drawBehind {
     val start = (laneCenter.dp.toPx() - horizontalScrollState.value).coerceIn(0f, size.width)
 
-    drawRect(
+    drawRowBand(
         color = color.copy(alpha = if (isSelected) SELECTED_TINT_ALPHA else ROW_TINT_ALPHA),
-        topLeft = Offset(start, 0f),
-        size = Size(size.width - start, size.height),
+        start = start,
     )
+}
+
+/**
+ * Band of a row from [start] to the end of the cell, as tall as the commit's node and vertically centered.
+ */
+private fun DrawScope.drawRowBand(color: Color, start: Float = 0f) {
+    val inset = rowBandInset(size.height)
+
+    drawRect(
+        color = color,
+        topLeft = Offset(start, inset),
+        size = Size(size.width - start, size.height - inset * 2),
+    )
+}
+
+/**
+ * Background of a whole cell with the same vertical inset as the bands of the graph.
+ */
+private fun Modifier.rowBand(color: Color?) = drawBehind {
+    if (color != null) drawRowBand(color)
 }
 
 /**
@@ -1045,11 +1086,13 @@ private fun Modifier.rowHighlightFromNode(
     if (color == null) return@drawBehind
 
     val start = (laneCenter.dp.toPx() - horizontalScrollState.value).coerceIn(0f, size.width)
-    drawRect(color = color, topLeft = Offset(start, 0f), size = Size(size.width - start, size.height))
+    drawRowBand(color = color, start = start)
 }
 
 private fun Modifier.messageLeftBorder(color: Color, width: Dp = 2.dp) = drawBehind {
-    drawRect(color = color, size = Size(width.toPx(), size.height))
+    val inset = rowBandInset(size.height)
+
+    drawRect(color = color, topLeft = Offset(0f, inset), size = Size(width.toPx(), size.height - inset * 2))
 }
 
 @Composable
@@ -1174,6 +1217,8 @@ private fun CommitLine(
                     onSelectRow = onRevCommitSelected,
                     onCheckoutRef = { ref ->
                         when (ref) {
+                            // Already checked out, like the context menu (that doesn't offer it)
+                            is LogRef.BranchRef if ref.isCurrent -> {}
                             is LogRef.BranchRef -> if (ref.branch.isRemote) {
                                 onCheckoutRemoteBranch(ref.branch)
                             } else {
@@ -1220,10 +1265,8 @@ private fun CommitLine(
                 CommitMessage(
                     modifier = Modifier
                         .weight(1f)
-                        .backgroundIf(
-                            condition = isSelected,
-                            color = MaterialTheme.colors.backgroundSelected,
-                            elseColor = hoverColor.takeIf { isHovered },
+                        .rowBand(
+                            if (isSelected) MaterialTheme.colors.backgroundSelected else hoverColor.takeIf { isHovered }
                         ),
                     graphCommit = graphNode,
                     nodeColor = nodeColor,
@@ -1415,6 +1458,24 @@ private fun RefsCell(
         // Set after right clicking a ref of the list, so its context menu isn't closed when the pointer leaves it
         var isPinned by remember { mutableStateOf(false) }
 
+        // The expanded list opens over the label while hovering it, so the two clicks of a double click can land on
+        // different components (label and list). Each combinedClickable only sees its own clicks and the double click
+        // was lost: it's detected here, shared by both.
+        val doubleClickTimeout = LocalViewConfiguration.current.doubleTapTimeoutMillis
+        val lastClick = remember { arrayOfNulls<Pair<LogRef, Long>>(1) }
+        val onRefClick: (LogRef) -> Unit = { ref ->
+            val now = System.currentTimeMillis()
+            val previous = lastClick[0]
+
+            if (previous != null && previous.first == ref && now - previous.second <= doubleClickTimeout) {
+                lastClick[0] = null
+                onCheckoutRef(ref)
+            } else {
+                lastClick[0] = ref to now
+                onSelectRow()
+            }
+        }
+
         LaunchedEffect(isCellHovered, isPopupHovered, isPinned, isPrimaryTruncated) {
             if (isCellHovered || isPopupHovered || isPinned) {
                 showAllRefs = otherRefs.isNotEmpty() || isPrimaryTruncated
@@ -1438,10 +1499,7 @@ private fun RefsCell(
                     onTruncatedChange = { isPrimaryTruncated = it },
                     modifier = Modifier
                         .widthIn(max = (width - if (otherRefs.isEmpty()) 16.dp else 44.dp).coerceAtLeast(24.dp))
-                        .combinedClickable(
-                            onClick = onSelectRow,
-                            onDoubleClick = { onCheckoutRef(primaryRef) },
-                        )
+                        .clickable { onRefClick(primaryRef) }
                         .handOnHover(),
                 )
             }
@@ -1512,10 +1570,7 @@ private fun RefsCell(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .widthIn(max = 360.dp)
-                                        .combinedClickable(
-                                            onClick = onSelectRow,
-                                            onDoubleClick = { onCheckoutRef(ref) },
-                                        )
+                                        .clickable { onRefClick(ref) }
                                         .handOnHover(),
                                 )
                             }

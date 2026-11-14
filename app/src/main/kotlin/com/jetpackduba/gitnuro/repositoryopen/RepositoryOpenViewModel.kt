@@ -162,12 +162,16 @@ class RepositoryOpenViewModel @Inject constructor(
     /** What the toolbar's Pull button does, depending on the mode chosen in its dropdown */
     fun runToolbarPull() {
         viewModelScope.launch {
-            when (toolbarPullMode.first()) {
-                ToolbarPullMode.FETCH_ALL -> fetchAll()
-                ToolbarPullMode.PULL_FAST_FORWARD_IF_POSSIBLE -> pull(PullType.MERGE)
-                ToolbarPullMode.PULL_FAST_FORWARD_ONLY -> pull(PullType.FAST_FORWARD_ONLY)
-                ToolbarPullMode.PULL_REBASE -> pull(PullType.REBASE)
-            }
+            runToolbarPull(toolbarPullMode.first())
+        }
+    }
+
+    fun runToolbarPull(mode: ToolbarPullMode) {
+        when (mode) {
+            ToolbarPullMode.FETCH_ALL -> fetchAll()
+            ToolbarPullMode.PULL_FAST_FORWARD_IF_POSSIBLE -> pull(PullType.MERGE)
+            ToolbarPullMode.PULL_FAST_FORWARD_ONLY -> pull(PullType.FAST_FORWARD_ONLY)
+            ToolbarPullMode.PULL_REBASE -> pull(PullType.REBASE)
         }
     }
 
@@ -216,6 +220,32 @@ class RepositoryOpenViewModel @Inject constructor(
 
     val selectedItem: StateFlow<SelectedItem>
         field = MutableStateFlow<SelectedItem>(SelectedItem.UncommittedChanges)
+
+    /** Requests to move the selected changed file: 1 to the next one of its list, -1 to the previous one */
+    val statusSelectionMoves: SharedFlow<Int>
+        field = MutableSharedFlow<Int>(extraBufferCapacity = 16)
+
+    /**
+     * @return false when there is no changed file selected (the key press isn't for the status lists)
+     */
+    fun moveStatusSelection(direction: Int): Boolean {
+        val selection = diffSelected.value as? DiffSelected.UncommittedChanges
+
+        if (selection == null || selection.items.isEmpty()) {
+            return false
+        }
+
+        statusSelectionMoves.tryEmit(direction)
+
+        return true
+    }
+
+    /**
+     * Share of the side panel's height of its blocks (Local, Remote, Stashes, Tags and Submodules) while they are
+     * expanded.
+     * Changed by dragging the edges between them. It's kept here so it isn't lost when the panel is hidden.
+     */
+    val sidePanelBlockWeights = androidx.compose.runtime.mutableStateListOf(1f, 1f, 0.6f, 0.6f, 0.6f)
 
     val isExpandedBranches: StateFlow<Boolean>
         field = MutableStateFlow<Boolean>(true)
@@ -586,7 +616,12 @@ class RepositoryOpenViewModel @Inject constructor(
 
     fun deleteBranch(branch: Branch) = deleteBranchUseCase(branch)
 
-    fun checkoutBranch(branch: Branch) = checkoutBranchUseCase(branch)
+    fun checkoutBranch(branch: Branch) {
+        // Already checked out: nothing to do (it would only refresh everything and show the "switched" card)
+        if (branch.isLocal && branch.isSameBranch(currentBranch.value.data)) return
+
+        checkoutBranchUseCase(branch)
+    }
 
     fun rebaseBranch(branch: Branch) = rebaseBranchUseCase(branch)
 
@@ -1129,9 +1164,14 @@ class RepositoryOpenViewModel @Inject constructor(
 
     fun unstageHunk(diffEntry: DiffEntry, hunk: Hunk) = unstageHunkUseCase(diffEntry, hunk)
 
-    fun stageFile(statusEntry: StatusEntry) = statusStageUseCase(statusEntry)
+    // Through the status actions, so the selection moves to the next file like when staging from the lists
+    fun stageFile(statusEntry: StatusEntry) {
+        statusViewModelExtender.onAction(StatusAction.EntryAction(statusEntry))
+    }
 
-    fun unstageFile(statusEntry: StatusEntry) = statusUnstageUseCase(statusEntry)
+    fun unstageFile(statusEntry: StatusEntry) {
+        statusViewModelExtender.onAction(StatusAction.EntryAction(statusEntry))
+    }
 
     fun cancelDiffRunningJobs() {
         diffJob?.cancel()

@@ -161,17 +161,20 @@ fun Menu(
             toolbarPullMode.title
         }
 
+        // The button shows the operation it runs: "Fetch" or "Pull", each one with its icon
+        val isFetchMode = toolbarPullMode == ToolbarPullMode.FETCH_ALL
+
         ExtendedMenuButton(
-            title = stringResource(Res.string.menu_pull),
+            title = if (isFetchMode) "Fetch" else stringResource(Res.string.menu_pull),
             tooltipText = pullTooltip,
             enabled = hasRemotes,
-            icon = painterResource(Res.drawable.download),
+            icon = painterResource(if (isFetchMode) Res.drawable.fetch else Res.drawable.download),
             keybinding = KeybindingOption.PULL.keyBinding,
             onClick = { viewModel.runToolbarPull() },
             extendedListItems = buildList {
                 add(
                     ContextMenuElement.ContextHint(
-                        "Select a default pull/fetch operation to execute when clicking this button"
+                        "Click an option to run it. Click its radio button to make it the default operation of this button"
                     )
                 )
 
@@ -184,7 +187,10 @@ fun Menu(
                                     if (mode == toolbarPullMode) Res.drawable.radio_checked else Res.drawable.radio_unchecked
                                 )
                             },
-                            onClick = { viewModel.setToolbarPullMode(mode) },
+                            // The option runs once, the default of the button doesn't change
+                            onClick = { viewModel.runToolbarPull(mode) },
+                            // The radio button only makes it the default, nothing is run
+                            onIconClick = { viewModel.setToolbarPullMode(mode) },
                         )
                     )
                 }
@@ -661,20 +667,30 @@ fun ExtendedMenuButton(
             enabled = enabled,
             items = { extendedListItems }
         ) {
-            Box(
+            // Same structure as the button's content (an invisible label + the icon's slot) so the arrow is centered on
+            // the icon, whatever the height of the label's font
+            Column(
                 modifier = Modifier
                     .fillMaxHeight()
                     .ignoreKeyEvents(),
-                contentAlignment = Alignment.Center,
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                MenuButtonLabel(" ", Color.Transparent)
 
-                Icon(
-                    painterResource(Res.drawable.dropdown),
-                    contentDescription = null,
-                    tint = color,
-                    modifier = Modifier.padding(top = 14.dp).size(14.dp)
-                )
-
+                Box(
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .size(18.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painterResource(Res.drawable.dropdown),
+                        contentDescription = null,
+                        tint = color,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
             }
         }
     }

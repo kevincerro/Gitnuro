@@ -25,6 +25,9 @@ import com.jetpackduba.gitnuro.app.generated.resources.expand_more
 import com.jetpackduba.gitnuro.theme.onBackgroundSecondary
 import org.jetbrains.compose.resources.painterResource
 
+/** Height of [SideMenuHeader]: its row plus the divider line above it */
+val SIDE_MENU_HEADER_HEIGHT = 31.dp
+
 @Composable
 fun SideMenuHeader(
     text: String,
@@ -37,7 +40,8 @@ fun SideMenuHeader(
     val hoverInteraction = remember { MutableInteractionSource() }
     val isHovered by hoverInteraction.collectIsHoveredAsState()
 
-    Column {
+    // Opaque: the header stays fixed at the top of its list and the rows scroll behind it
+    Column(modifier = Modifier.background(MaterialTheme.colors.surface)) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()

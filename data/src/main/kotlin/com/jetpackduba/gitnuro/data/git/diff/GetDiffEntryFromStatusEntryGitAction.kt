@@ -10,6 +10,7 @@ import com.jetpackduba.gitnuro.domain.models.StatusEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.diff.DiffEntry
 import org.eclipse.jgit.treewalk.EmptyTreeIterator
 import org.eclipse.jgit.treewalk.filter.PathFilter
 import javax.inject.Inject
@@ -47,5 +48,29 @@ class GetDiffEntryFromStatusEntryGitAction @Inject constructor(
             ?: throw MissingDiffEntryException("Diff entry not found")
 
         return@withContext firstDiffEntry
+    }
+
+    /**
+     * All the entries of the index (when [isCached]) or of the working tree in a single diff. Much cheaper than asking
+     * for the entries one by one, which reads the index and walks the tree once per file.
+     */
+    suspend fun getAll(
+        git: Git,
+        isCached: Boolean,
+    ): List<DiffEntry> = withContext(Dispatchers.IO) {
+        git.diff()
+            .setShowNameAndStatusOnly(true)
+            .setCached(isCached).apply {
+                val repositoryState = getRepositoryStateGitAction(git.repository.directory.absolutePath).okOrNull()!!
+                if (
+                    getCurrentBranchGitAction(git).okOrNull() == null &&
+                    !repositoryState.isMerging &&
+                    !repositoryState.isRebasing &&
+                    isCached
+                ) {
+                    setOldTree(EmptyTreeIterator()) // Required if the repository is empty
+                }
+            }
+            .call()
     }
 }

@@ -68,6 +68,12 @@ import java.io.FileOutputStream
 import java.nio.file.Paths
 import javax.inject.Inject
 
+/**
+ * Size of every text of the UI relative to its declared size (e.g. 14sp is drawn as ~12.6sp), applied on top of the
+ * scale chosen in the settings.
+ */
+private const val UI_FONT_SCALE = 0.9f
+
 private const val TAG = "App"
 private const val MAX_CHARS_CURRENT_TAB_NAME = 250
 private const val NEW_TAB_DEFAULT_NAME = "New tab"
@@ -216,9 +222,18 @@ class App @Inject constructor(
                 val compositionValues: MutableList<ProvidedValue<*>> =
                     mutableListOf(LocalTextContextMenu provides AppPopupMenu())
 
-                if (scale != null) {
-                    compositionValues.add(LocalDensity provides Density(scale, 1f))
-                }
+                // The scale multiplies the density of the display where the window is (2.0 in a retina one, 1.0 in
+                // a regular monitor) instead of replacing it: the same setting gives the same visual size in both,
+                // also when the window is moved from one to the other.
+                // The texts are a bit smaller than the rest of the UI (UI_FONT_SCALE), a compact look like GitKraken's.
+                val displayDensity = LocalDensity.current
+
+                compositionValues.add(
+                    LocalDensity provides Density(
+                        density = displayDensity.density * (scale ?: 1f),
+                        fontScale = displayDensity.fontScale * UI_FONT_SCALE,
+                    )
+                )
 
                 val avatarProvider = when (avatarProviderType) {
                     AvatarProviderType.Gravatar -> GravatarAvatarProvider()

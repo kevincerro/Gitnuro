@@ -14,7 +14,14 @@ class FetchAllBranchUseCase @Inject constructor(
         useCaseExecutor.executeLaunch(
             taskType = TaskType.Fetch,
             refreshEvenIfFailed = true,
-            dataToRefresh = arrayOf(DataToRefresh.LOG),
+            // The remote branches (and the tags) are what a fetch moves: without refreshing them the graph gets the
+            // new commits but their refs stay in the old ones, as if nothing had been fetched
+            dataToRefresh = arrayOf(
+                DataToRefresh.BRANCHES,
+                DataToRefresh.REMOTES,
+                DataToRefresh.TAGS,
+                DataToRefresh.LOG,
+            ),
         ) { repositoryPath ->
             fetchAllGitAction(repositoryPath, specificRemote)
         }

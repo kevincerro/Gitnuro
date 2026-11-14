@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jetpackduba.gitnuro.theme.scrollbarHover
 import com.jetpackduba.gitnuro.theme.scrollbarNormal
@@ -26,6 +27,8 @@ import com.jetpackduba.gitnuro.theme.scrollbarNormal
 fun ScrollableLazyColumn(
     modifier: Modifier,
     state: LazyListState = rememberLazyListState(),
+    /** Space left above the scrollbar, e.g. the height of a sticky header that it shouldn't cover */
+    scrollbarTopPadding: Dp = 0.dp,
     content: LazyListScope.() -> Unit,
 ) {
     val pointerPosition = remember { mutableStateOf<Offset?>(null) }
@@ -43,7 +46,7 @@ fun ScrollableLazyColumn(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .fillMaxHeight()
-                .padding(end = 2.dp),
+                .padding(top = scrollbarTopPadding, end = 2.dp),
             style = LocalScrollbarStyle.current.copy(
                 unhoverColor = MaterialTheme.colors.scrollbarNormal,
                 hoverColor = MaterialTheme.colors.scrollbarHover,

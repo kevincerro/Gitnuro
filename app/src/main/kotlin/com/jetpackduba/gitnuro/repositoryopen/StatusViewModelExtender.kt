@@ -280,26 +280,81 @@ class StatusViewModelExtender @AssistedInject constructor(
 
     }
 
+    /**
+     * Called right before [entry] leaves its list (it's going to be staged, unstaged or discarded). If it's the only
+     * selected file, the selection moves to the file that follows it (or to the previous one if it's the last), so
+     * its diff takes the place of the one that was being displayed instead of closing the diff.
+     *
+     * It's done before the operation and not when the status changes: by then the diff of the old file has already
+     * failed to load, which closes the diff and clears the selection.
+     */
+    private fun selectNextEntryOf(entry: StatusEntry) {
+        val selection = diffSelected.value as? DiffSelected.UncommittedChanges ?: return
+        val selectedEntry = selection.items.singleOrNull()?.statusEntry ?: return
+
+        if (selection.entryType != entry.entryType || selectedEntry.filePath != entry.filePath) {
+            return
+        }
+
+        val files = statusState.value
+            .getVisibleEntries(entry.entryType)
+            .mapNotNull { (it as? TreeItem.File)?.data }
+
+        val index = files.indexOfFirst { it.filePath == entry.filePath }
+
+        if (index < 0) {
+            return
+        }
+
+        val nextEntry = files.getOrNull(index + 1) ?: files.getOrNull(index - 1) ?: return
+
+        onDiffSelected(
+            DiffSelected.UncommittedChanges(
+                entry.entryType,
+                setOf(DiffType.UncommittedDiff(nextEntry, entry.entryType)),
+            )
+        )
+    }
+
+    /**
+     * Actions over a whole list (stage all, unstage all, discard all) aren't about the selected file: it's
+     * deselected, which also closes its diff.
+     */
+    private fun clearSelection() {
+        val selection = diffSelected.value as? DiffSelected.UncommittedChanges ?: return
+
+        if (selection.items.isNotEmpty()) {
+            onRemoveEntriesFromSelection(selection.items, selection.entryType)
+        }
+    }
+
     fun onAction(action: StatusAction) = when (action) {
         is StatusAction.EntryAction -> {
+            selectNextEntryOf(action.statusEntry)
+
             when (action.statusEntry.entryType) {
                 EntryType.STAGED -> unstage(action.statusEntry)
                 EntryType.UNSTAGED -> stage(action.statusEntry)
             }
         }
 
-        is StatusAction.Reset -> when {
-            action.statusEntry.entryType == EntryType.STAGED -> discardStaged(listOf(action.statusEntry))
-            // Untracked files have nothing to restore, discarding them means deleting them
-            action.statusEntry.statusType == StatusType.ADDED -> deleteFile(action.statusEntry)
-            else -> discardUnstaged(listOf(action.statusEntry))
+        is StatusAction.Reset -> {
+            selectNextEntryOf(action.statusEntry)
+            reset(action.statusEntry)
         }
 
-        StatusAction.DiscardAll -> statusFileActions.discardAll()
+        StatusAction.DiscardAll -> {
+            clearSelection()
+            statusFileActions.discardAll()
+        }
 
-        is StatusAction.AllEntriesAction -> when (action.entryType) {
-            EntryType.STAGED -> unstageAll()
-            EntryType.UNSTAGED -> stageAll()
+        is StatusAction.AllEntriesAction -> {
+            clearSelection()
+
+            when (action.entryType) {
+                EntryType.STAGED -> unstageAll()
+                EntryType.UNSTAGED -> stageAll()
+            }
         }
 
         is StatusAction.Delete -> deleteFile(action.statusEntry)
@@ -358,6 +413,13 @@ class StatusViewModelExtender @AssistedInject constructor(
         is StatusAction.ToggleAmend -> amend(action.toggle)
         is StatusAction.ToggleAmendRebaseInteractive -> amendRebaseInteractive(action.toggle)
         is StatusAction.UpdateCommitMessage -> updateCommitMessage(action.message)
+    }
+
+    private fun reset(statusEntry: StatusEntry) = when {
+        statusEntry.entryType == EntryType.STAGED -> discardStaged(listOf(statusEntry))
+        // Untracked files have nothing to restore, discarding them means deleting them
+        statusEntry.statusType == StatusType.ADDED -> deleteFile(statusEntry)
+        else -> discardUnstaged(listOf(statusEntry))
     }
 
     fun updateCommitMessage(message: TextFieldValue) {

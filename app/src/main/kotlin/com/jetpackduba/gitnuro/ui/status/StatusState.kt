@@ -67,6 +67,16 @@ data class StatusState(
         }
     }
 
+    /**
+     * Entries displayed in the list of [entryType]: the filtered ones while its search has some text.
+     */
+    fun getVisibleEntries(entryType: EntryType): List<TreeItem<StatusEntry>> {
+        return when (entryType) {
+            EntryType.STAGED -> if (searchFilterStaged.text.trim().isEmpty()) staged else filteredStaged
+            EntryType.UNSTAGED -> if (searchFilterUnstaged.text.trim().isEmpty()) unstaged else filteredUnstaged
+        }
+    }
+
     val hasStagedFiles = staged.isNotEmpty()
     val hasUnstagedFiles = unstaged.isNotEmpty()
 }
@@ -149,32 +159,50 @@ fun combineStatusState(
 
         val isLoading = statusDataState.isLoading || repositoryStateDateState.isLoading
 
-        StatusState(
-            isLoading = isLoading,
-            staged = statusEntriesToTreeEntry(
-                showAsTree,
-                status.staged,
-                contractedDirectories,
-                sortDescending,
-            ),
-            filteredStaged = statusEntriesToTreeEntry(
+        val stagedTree = statusEntriesToTreeEntry(
+            showAsTree,
+            status.staged,
+            contractedDirectories,
+            sortDescending,
+        )
+
+        val unstagedTree = statusEntriesToTreeEntry(
+            showAsTree,
+            status.unstaged,
+            contractedDirectories,
+            sortDescending,
+        )
+
+        // Without a search the filtered entries usually are all the entries: the tree isn't built (and sorted) twice,
+        // these lists can have thousands of files
+        val filteredStagedTree = if (filteredStaged == status.staged) {
+            stagedTree
+        } else {
+            statusEntriesToTreeEntry(
                 showAsTree,
                 filteredStaged,
                 contractedDirectories,
                 sortDescending,
-            ),
-            unstaged = statusEntriesToTreeEntry(
-                showAsTree,
-                status.unstaged,
-                contractedDirectories,
-                sortDescending,
-            ),
-            filteredUnstaged = statusEntriesToTreeEntry(
+            )
+        }
+
+        val filteredUnstagedTree = if (filteredUnstaged == status.unstaged) {
+            unstagedTree
+        } else {
+            statusEntriesToTreeEntry(
                 showAsTree,
                 filteredUnstaged,
                 contractedDirectories,
                 sortDescending,
-            ),
+            )
+        }
+
+        StatusState(
+            isLoading = isLoading,
+            staged = stagedTree,
+            filteredStaged = filteredStagedTree,
+            unstaged = unstagedTree,
+            filteredUnstaged = filteredUnstagedTree,
             swapUncommittedChanges = swapUncommittedChanges,
             isAmend = isAmend,
             isAmendRebaseInteractive = isAmendRebaseInteractive,

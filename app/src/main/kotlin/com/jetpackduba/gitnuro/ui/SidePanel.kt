@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalComposeUiApi::class)
+@file:OptIn(ExperimentalComposeUiApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package com.jetpackduba.gitnuro.ui
 
@@ -21,12 +21,24 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.sp
 import com.jetpackduba.gitnuro.extensions.handMouseClickable
 import org.jetbrains.compose.resources.DrawableResource
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.*
@@ -51,6 +63,7 @@ import com.jetpackduba.gitnuro.repositoryopen.RepositoryOpenViewModel
 import com.jetpackduba.gitnuro.theme.onBackgroundSecondary
 import com.jetpackduba.gitnuro.ui.components.AdjustableOutlinedTextField
 import com.jetpackduba.gitnuro.ui.components.ScrollableLazyColumn
+import com.jetpackduba.gitnuro.ui.components.SIDE_MENU_HEADER_HEIGHT
 import com.jetpackduba.gitnuro.ui.components.SideMenuHeader
 import com.jetpackduba.gitnuro.ui.components.SideMenuSubentry
 import com.jetpackduba.gitnuro.ui.components.tooltip.DelayedTooltip
@@ -161,12 +174,30 @@ fun SidePanel(
         }
 
         CompositionLocalProvider(LocalRemoteAvatars provides remoteAvatars) {
-        // Like GitKraken, Local and Remote take the available space and the other sections stay at the bottom
-        ScrollableLazyColumn(
+        // Every section (Local, Remote, Stashes, Tags and Submodules) is an independent block: its header stays fixed
+        // and only its content scrolls. The expanded ones share the height of the panel and the edge between two of
+        // them can be dragged to make one bigger and the other smaller.
+        val blockWeights = viewModel.sidePanelBlockWeights
+        val blockHeights = remember { IntArray(SIDE_PANEL_BLOCKS_COUNT) }
+        val expandedBlocks = listOf(
+            branchesState.isExpanded,
+            remotesState.isExpanded,
+            stashesState.isExpanded,
+            tagsState.isExpanded,
+            submodulesState.isExpanded,
+        )
+
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
                 .padding(top = 4.dp)
+        ) {
+        SidePanelBlock(
+            index = 0,
+            expandedBlocks = expandedBlocks,
+            weights = blockWeights,
+            heights = blockHeights,
         ) {
             localBranches(
                 branchesState = branchesState,
@@ -178,7 +209,14 @@ fun SidePanel(
                 onToggleFolder = onToggleFolder,
                 aheadBehind = aheadBehind,
             )
+        }
 
+        SidePanelBlock(
+            index = 1,
+            expandedBlocks = expandedBlocks,
+            weights = blockWeights,
+            heights = blockHeights,
+        ) {
             remotes(
                 remotesState = remotesState,
                 viewModel = viewModel,
@@ -188,18 +226,11 @@ fun SidePanel(
             )
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(MaterialTheme.colors.onBackground.copy(alpha = 0.08f))
-        )
-
-        // Grows when a section is expanded, up to the same space as Local/Remote
-        ScrollableLazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f, fill = false)
+        SidePanelBlock(
+            index = 2,
+            expandedBlocks = expandedBlocks,
+            weights = blockWeights,
+            heights = blockHeights,
         ) {
             stashes(
                 stashesState = stashesState,
@@ -210,19 +241,137 @@ fun SidePanel(
                 onPopStash = { viewModel.popStash(it) },
                 onDeleteStash = { viewModel.deleteStash(it) },
             )
+        }
 
+        SidePanelBlock(
+            index = 3,
+            expandedBlocks = expandedBlocks,
+            weights = blockWeights,
+            heights = blockHeights,
+        ) {
             tags(
                 tagsState = tagsState,
                 selectedItem = selectedItem,
                 viewModel = viewModel,
             )
+        }
 
+        SidePanelBlock(
+            index = 4,
+            expandedBlocks = expandedBlocks,
+            weights = blockWeights,
+            heights = blockHeights,
+        ) {
             submodules(
                 submodulesState = submodulesState,
                 viewModel = viewModel,
                 onAddSubmodule = { onNavigate(Screen.SubmoduleAdd) },
             )
         }
+        }
+        }
+    }
+}
+
+private const val SIDE_PANEL_BLOCKS_COUNT = 5
+
+/** An expanded block can't be made smaller than this by dragging its edges */
+private val SIDE_PANEL_BLOCK_MIN_HEIGHT = 64.dp
+
+/**
+ * Block of the side panel with its own scroll. While it's expanded it shares the available height with the other
+ * expanded blocks according to its weight, otherwise it's only as tall as its header.
+ *
+ * The top edge of an expanded block can be dragged to resize it against the closest expanded block above it.
+ */
+@Composable
+private fun ColumnScope.SidePanelBlock(
+    index: Int,
+    expandedBlocks: List<Boolean>,
+    weights: MutableList<Float>,
+    heights: IntArray,
+    content: LazyListScope.() -> Unit,
+) {
+    val isExpanded = expandedBlocks[index]
+    val previousExpandedIndex = (index - 1 downTo 0).firstOrNull { expandedBlocks[it] }
+    val minHeight = with(LocalDensity.current) { SIDE_PANEL_BLOCK_MIN_HEIGHT.toPx() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (isExpanded) Modifier.weight(weights[index]) else Modifier)
+            .onSizeChanged { heights[index] = it.height },
+    ) {
+        if (isExpanded) {
+            ScrollableLazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                // The scrollbar belongs to the content, it starts below the fixed header of the section
+                scrollbarTopPadding = SIDE_MENU_HEADER_HEIGHT,
+                content = content,
+            )
+        } else {
+            // Only the headers. Not the scrollable column: its scrollbar fills the available height, so a collapsed
+            // block would take the whole panel and leave no space for the expanded ones
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                content = content,
+            )
+        }
+
+        if (isExpanded && previousExpandedIndex != null) {
+            SidePanelBlockResizeHandle(
+                modifier = Modifier.align(Alignment.TopCenter),
+                onDrag = { delta ->
+                    val totalHeight = (heights[previousExpandedIndex] + heights[index]).toFloat()
+                    val totalWeight = weights[previousExpandedIndex] + weights[index]
+
+                    if (totalHeight > 0f && totalWeight > 0f) {
+                        // The height of the block above is taken from its weight: the measured ones aren't updated
+                        // until the next layout and several drag events can arrive before it
+                        val previousHeight = totalHeight * weights[previousExpandedIndex] / totalWeight
+                        val blockMinHeight = minHeight.coerceAtMost(totalHeight / 2f)
+                        val newPreviousHeight = (previousHeight + delta)
+                            .coerceIn(blockMinHeight, totalHeight - blockMinHeight)
+                        val newPreviousWeight = totalWeight * newPreviousHeight / totalHeight
+
+                        weights[previousExpandedIndex] = newPreviousWeight
+                        weights[index] = totalWeight - newPreviousWeight
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SidePanelBlockResizeHandle(
+    modifier: Modifier,
+    onDrag: (Float) -> Unit,
+) {
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    val isDragged by interactionSource.collectIsDraggedAsState()
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(6.dp)
+            .hoverable(interactionSource)
+            .pointerHoverIcon(resizePointerIconNorth)
+            .draggable(
+                state = rememberDraggableState { delta -> currentOnDrag(delta) },
+                orientation = Orientation.Vertical,
+                interactionSource = interactionSource,
+            ),
+    ) {
+        if (isHovered || isDragged) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .background(MaterialTheme.colors.primaryVariant)
+            )
         }
     }
 }
@@ -307,7 +456,7 @@ fun LazyListScope.localBranches(
     val branches = branchesState.branches
     val currentBranch = branchesState.currentBranch
 
-    item {
+    stickyHeader {
         ContextMenu(
             items = { emptyList() }
         ) {
@@ -348,7 +497,7 @@ fun LazyListScope.localBranches(
                 isSelectedItem = selectedItem is SelectedItem.BranchItem && selectedItem.branch == branch,
                 currentBranch = currentBranch,
                 onBranchClicked = { viewModel.selectBranch(branch) },
-                onBranchDoubleClicked = { viewModel.checkoutBranch(branch) },
+                onBranchDoubleClicked = { if (!branch.isSameBranch(currentBranch)) viewModel.checkoutBranch(branch) },
                 onCheckoutBranch = { viewModel.checkoutBranch(it) },
                 onMergeBranch = { viewModel.mergeBranch(it) },
                 onRebaseBranch = { viewModel.rebaseBranch(it) },
@@ -375,7 +524,7 @@ fun LazyListScope.remotes(
     val isExpanded = remotesState.isExpanded
     val remotes = remotesState.remotes
 
-    item {
+    stickyHeader {
         SideMenuHeader(
             text = stringResource(Res.string.side_pane_remotes_title),
             icon = painterResource(Res.drawable.cloud),
@@ -469,7 +618,7 @@ fun LazyListScope.tags(
     val isExpanded = tagsState.isExpanded
     val tags = tagsState.tags
 
-    item {
+    stickyHeader {
         ContextMenu(
             items = { emptyList() }
         ) {
@@ -509,7 +658,7 @@ fun LazyListScope.stashes(
     val isExpanded = stashesState.isExpanded
     val stashes = stashesState.stashes
 
-    item {
+    stickyHeader {
         ContextMenu(
             items = { emptyList() }
         ) {
@@ -546,7 +695,7 @@ fun LazyListScope.submodules(
     val isExpanded = submodulesState.isExpanded
     val submodules = submodulesState.submodules
 
-    item {
+    stickyHeader {
         ContextMenu(
             items = { emptyList() }
         ) {

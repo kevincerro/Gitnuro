@@ -6,7 +6,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 
 object PreferencesKeys {
-    val scaleUiPreference get() = floatPreferencesKey("scale_ui")
+    val scaleUiPreference get() = floatPreferencesKey("scale_ui_factor") // "scale_ui" held an absolute density, not a factor of the display's one
     val themePreference get() = stringPreferencesKey("theme")
     val customThemePreference get() = stringPreferencesKey("custom_theme")
     val linesHeightPreference get() = stringPreferencesKey("lines_height")

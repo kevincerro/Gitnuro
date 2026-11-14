@@ -61,6 +61,15 @@ fun RepositoryOpenPage(
         modifier = Modifier
             .focusRequester(focusRequester)
             .focusable(true)
+            .onKeyEvent {
+                // Arrow keys that the focused component didn't use (text fields do) move the selected changed file,
+                // wherever the focus is
+                when {
+                    it.matchesBinding(KeybindingOption.DOWN) -> repositoryOpenViewModel.moveStatusSelection(1)
+                    it.matchesBinding(KeybindingOption.UP) -> repositoryOpenViewModel.moveStatusSelection(-1)
+                    else -> false
+                }
+            }
             .onPreviewKeyEvent {
                 when {
                     // Cmd/Ctrl + Option/Alt + F focuses the side panel filter, like GitKraken
@@ -434,7 +443,8 @@ fun MainContentView(
                         onAction = { viewModel.onAction(it) },
                         onStashWithMessage = { viewModel.stashWithMessage(it) },
                         onBlameFile = { viewModel.blameFile(it) },
-                        onHistoryFile = { viewModel.fileHistory(it) }
+                        onHistoryFile = { viewModel.fileHistory(it) },
+                        selectionMoves = viewModel.statusSelectionMoves,
                     )
                 }
             }

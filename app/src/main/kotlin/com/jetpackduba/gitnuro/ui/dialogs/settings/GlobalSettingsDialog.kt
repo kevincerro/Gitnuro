@@ -641,7 +641,8 @@ private fun Appearance(settingsViewState: SettingsViewState, onAction: (Settings
     }
 
     var scaleValue by remember {
-        val scaleUi = settingsViewState.scaleUi ?: density
+        // Relative to the density of the display: 100% is its native size
+        val scaleUi = settingsViewState.scaleUi ?: 1f
 
         var matchingOption = options.firstOrNull { it.value == scaleUi }
 

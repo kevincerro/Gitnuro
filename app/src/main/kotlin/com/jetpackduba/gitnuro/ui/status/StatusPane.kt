@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -70,6 +71,8 @@ import com.jetpackduba.gitnuro.ui.context_menu.statusEntriesContextMenuItems
 import com.jetpackduba.gitnuro.ui.context_menu.statusEntryContextMenuItems
 import com.jetpackduba.gitnuro.ui.log.laneColor
 import com.jetpackduba.gitnuro.ui.tree_files.TreeItem
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import java.io.File
 import org.jetbrains.compose.resources.DrawableResource
@@ -91,6 +94,8 @@ fun StatusPane(
     onStashWithMessage: (String) -> Unit,
     onBlameFile: (String) -> Unit,
     onHistoryFile: (String) -> Unit,
+    /** Requests to move the selected file: 1 to the next one, -1 to the previous one */
+    selectionMoves: Flow<Int> = emptyFlow(),
 ) {
     val swapUncommittedChanges = statusState.swapUncommittedChanges
     val stagedListState = statusState.stagedLazyListState
@@ -175,8 +180,83 @@ fun StatusPane(
             )
         }
 
+        // The lists get the focus when one of their files is clicked/staged: the focused row may disappear (e.g. it
+        // has been staged) and, with the focus lost, the tab wouldn't receive the arrow keys that move the selection
+        val listsFocusRequester = remember { FocusRequester() }
+        val listsScope = rememberCoroutineScope()
+
+        val onListAction: (StatusAction) -> Unit = { action ->
+            if (action is StatusAction.SelectEntry || action is StatusAction.EntryAction) {
+                listsFocusRequester.requestFocus()
+            }
+
+            onAction(action)
+        }
+
+        // Moves the selection to the next/previous file of the list (staged or unstaged) that has it
+        val moveSelection: (Int) -> Unit = moveSelection@{ direction ->
+            val entryType = when {
+                selectedUnstagedDiffEntries.isNotEmpty() -> EntryType.UNSTAGED
+                selectedStagedDiffEntries.isNotEmpty() -> EntryType.STAGED
+                else -> return@moveSelection
+            }
+
+            val selectedEntries = when (entryType) {
+                EntryType.STAGED -> selectedStagedDiffEntries
+                EntryType.UNSTAGED -> selectedUnstagedDiffEntries
+            }
+
+            val listState = when (entryType) {
+                EntryType.STAGED -> stagedListState
+                EntryType.UNSTAGED -> unstagedListState
+            }
+
+            val entries = statusState.getVisibleEntries(entryType)
+            val currentEntry = selectedEntries.last().statusEntry
+            val currentIndex = entries.indexOfFirst { it is TreeItem.File<StatusEntry> && it.data == currentEntry }
+
+            if (currentIndex < 0) {
+                return@moveSelection
+            }
+
+            // Next file in that direction (directories of the tree are skipped)
+            var nextIndex = currentIndex + direction
+
+            while (nextIndex in entries.indices && entries[nextIndex] !is TreeItem.File<StatusEntry>) {
+                nextIndex += direction
+            }
+
+            val nextEntryIndex = nextIndex
+            val nextEntry = entries.getOrNull(nextEntryIndex) as? TreeItem.File<StatusEntry>
+
+            if (nextEntry != null) {
+                onAction(
+                    StatusAction.SelectEntry(
+                        statusEntry = nextEntry.data,
+                        isCtrlPressed = false,
+                        isMetaPressed = false,
+                        isShiftPressed = false,
+                        diffEntries = entries,
+                        selectedEntries = selectedEntries,
+                    )
+                )
+
+                listsScope.launch { listState.scrollToShowItem(nextEntryIndex) }
+            }
+        }
+
+        // The arrow keys are received by the tab (wherever the focus is: the lists, the diff, a button...)
+        val currentMoveSelection by rememberUpdatedState(moveSelection)
+
+        LaunchedEffect(selectionMoves) {
+            selectionMoves.collect { direction -> currentMoveSelection(direction) }
+        }
+
         Column(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(listsFocusRequester)
+                .focusable(),
         ) {
             @Composable
             fun staged() {
@@ -193,7 +273,7 @@ fun StatusPane(
                     onSearchFocused = { onAction(StatusAction.AddStagedSearchToCloseableView) },
                     onBlameFile = onBlameFile,
                     onHistoryFile = onHistoryFile,
-                    onAction = { onAction(it) },
+                    onAction = onListAction,
                 )
             }
 
@@ -212,7 +292,7 @@ fun StatusPane(
                     onSearchFocused = { onAction(StatusAction.AddUnstagedSearchToCloseableView) },
                     onBlameFile = onBlameFile,
                     onHistoryFile = onHistoryFile,
-                    onAction = { onAction(it) },
+                    onAction = onListAction,
                 )
             }
 
@@ -238,6 +318,25 @@ fun StatusPane(
             onStashWithMessage = onStashWithMessage,
             onAction = onAction,
         )
+    }
+}
+
+/**
+ * Scrolls the minimum needed to show the item at [index]: nothing if it's already visible, otherwise it ends up at the
+ * top or at the bottom of the list depending on where it was.
+ */
+private suspend fun LazyListState.scrollToShowItem(index: Int) {
+    val visibleItems = layoutInfo.visibleItemsInfo
+    val firstVisibleItem = visibleItems.firstOrNull() ?: return
+    val lastVisibleItem = visibleItems.last()
+
+    when {
+        index <= firstVisibleItem.index -> scrollToItem(index)
+        index >= lastVisibleItem.index -> {
+            val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+
+            scrollToItem(index, -(viewportHeight - lastVisibleItem.size).coerceAtLeast(0))
+        }
     }
 }
 
@@ -375,17 +474,7 @@ fun ColumnScope.StatusChangesList(
     }
 
     val actionInfo = getActionInfo(entryType)
-    val entries = if (searchFilter.text.trim().isEmpty()) {
-        when (entryType) {
-            EntryType.STAGED -> statusState.staged
-            EntryType.UNSTAGED -> statusState.unstaged
-        }
-    } else {
-        when (entryType) {
-            EntryType.STAGED -> statusState.filteredStaged
-            EntryType.UNSTAGED -> statusState.filteredUnstaged
-        }
-    }
+    val entries = statusState.getVisibleEntries(entryType)
 
     this.ChangesList(
         title = title,
