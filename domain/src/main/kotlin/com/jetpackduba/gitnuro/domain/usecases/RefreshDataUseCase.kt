@@ -2,6 +2,7 @@ package com.jetpackduba.gitnuro.domain.usecases
 
 import com.jetpackduba.gitnuro.domain.Pagination
 import com.jetpackduba.gitnuro.domain.RebaseConstants
+import com.jetpackduba.gitnuro.domain.RefreshDataLock
 import com.jetpackduba.gitnuro.domain.TabCoroutineScope
 import com.jetpackduba.gitnuro.domain.UseCaseExecutor
 import com.jetpackduba.gitnuro.domain.errors.Either
@@ -15,6 +16,7 @@ import com.jetpackduba.gitnuro.domain.repositories.DataState
 import com.jetpackduba.gitnuro.domain.repositories.RepositoryDataRepository
 import com.jetpackduba.gitnuro.domain.repositories.RepositoryStateRepository
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import org.eclipse.jgit.api.RebaseCommand
 import java.io.File
 import javax.inject.Inject
@@ -38,17 +40,28 @@ class RefreshDataUseCase @Inject constructor(
     private val getTrackingBranchUseCase: GetTrackingBranchUseCase,
     private val getLogUseCase: GetLogUseCase,
     private val scope: TabCoroutineScope,
+    private val refreshDataLock: RefreshDataLock,
 ) {
     operator fun invoke(vararg dataToRefresh: DataToRefresh) = scope.launch {
+        refreshDataLock.mutex.withLock {
+            refresh(dataToRefresh)
+        }
+    }
+
+    private suspend fun refresh(dataToRefresh: Array<out DataToRefresh>) {
         val isRefreshAll = dataToRefresh.contains(DataToRefresh.ALL)
+
+        // The log graph displays branches, remote branches, tags and stashes, so they must be kept in sync with it.
+        // Otherwise the graph is displayed with outdated refs until a full refresh (like a fetch) is triggered.
+        val isRefreshLog = isRefreshAll || dataToRefresh.contains(DataToRefresh.LOG)
 
         repositoryStateRepository.refreshTriggered(dataToRefresh.toList())
 
-        if (isRefreshAll || dataToRefresh.contains(DataToRefresh.BRANCHES)) {
+        if (isRefreshLog || dataToRefresh.contains(DataToRefresh.BRANCHES)) {
             refreshBranches()
         }
 
-        if (isRefreshAll || dataToRefresh.contains(DataToRefresh.STASHES)) {
+        if (isRefreshLog || dataToRefresh.contains(DataToRefresh.STASHES)) {
             refreshStashes()
         }
 
@@ -61,7 +74,7 @@ class RefreshDataUseCase @Inject constructor(
             refreshGitConfig()
         }
 
-        if (isRefreshAll || dataToRefresh.contains(DataToRefresh.REMOTES)) {
+        if (isRefreshLog || dataToRefresh.contains(DataToRefresh.REMOTES)) {
             refreshRemotes()
         }
 
@@ -69,7 +82,7 @@ class RefreshDataUseCase @Inject constructor(
             refreshSubmodules()
         }
 
-        if (isRefreshAll || dataToRefresh.contains(DataToRefresh.TAGS)) {
+        if (isRefreshLog || dataToRefresh.contains(DataToRefresh.TAGS)) {
             refreshTags()
         }
 
@@ -77,7 +90,7 @@ class RefreshDataUseCase @Inject constructor(
             refreshRepositoryState()
         }
 
-        if (isRefreshAll || dataToRefresh.contains(DataToRefresh.LOG)) {
+        if (isRefreshLog) {
             refreshLog()
         }
     }

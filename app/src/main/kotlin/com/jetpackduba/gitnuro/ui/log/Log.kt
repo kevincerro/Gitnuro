@@ -515,6 +515,7 @@ fun CommitsList(
 ) {
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboard.current
+    val graphWidthPx = with(LocalDensity.current) { graphWidth.toPx() }
 
     scrollOnUncommittedChangesAppear(scrollState, hasUncommittedChanges)
     scrollOnNewCommitAdded(scrollState, commitList.commits)
@@ -525,11 +526,20 @@ fun CommitsList(
             .fillMaxSize()
             // The underlying composable assigned to the horizontal scroll bar won't be receiving the scroll events
             // because the commits list will consume the events, so this code tries to scroll manually when it detects
-            // horizontal scrolling
+            // horizontal scrolling. Only scroll the graph when the pointer is over the graph (branches flow) area.
             .onPointerEvent(PointerEventType.Scroll) { pointerEvent ->
-                scope.launch {
-                    val xScroll = pointerEvent.changes.map { it.scrollDelta.x }.sum()
-                    horizontalScrollState.scrollBy(xScroll * HORIZONTAL_SCROLL_PIXELS_MULTIPLIER)
+                val pointerX = pointerEvent.changes.firstOrNull()?.position?.x ?: return@onPointerEvent
+
+                if (pointerX > graphWidthPx) {
+                    return@onPointerEvent
+                }
+
+                val xScroll = pointerEvent.changes.map { it.scrollDelta.x }.sum()
+
+                if (xScroll != 0f) {
+                    scope.launch {
+                        horizontalScrollState.scrollBy(xScroll * HORIZONTAL_SCROLL_PIXELS_MULTIPLIER)
+                    }
                 }
             },
     ) {
@@ -594,6 +604,7 @@ fun CommitsList(
                 onDeleteRemoteBranch = { onAction(LogAction.DeleteRemoteBranch(it)) },
                 onCheckoutTag = { onAction(LogAction.CheckoutTag(it)) },
                 onDeleteTag = { onAction(LogAction.DeleteTag(it)) },
+                onPushTag = { onAction(LogAction.PushTag(it)) },
                 onPushToRemoteBranch = { onAction(LogAction.PushToRemoteBranch(it)) },
                 onPullFromRemoteBranch = { onAction(LogAction.PullFromRemoteBranch(it)) },
                 onRebaseBranch = { onAction(LogAction.Rebase(it)) },
@@ -847,6 +858,7 @@ private fun CommitLine(
     onDeleteRemoteBranch: (Branch) -> Unit,
     onCheckoutTag: (Tag) -> Unit,
     onDeleteTag: (Tag) -> Unit,
+    onPushTag: (Tag) -> Unit,
     onPushToRemoteBranch: (Branch) -> Unit,
     onPullFromRemoteBranch: (Branch) -> Unit,
     onRebaseBranch: (Branch) -> Unit,
@@ -961,6 +973,7 @@ private fun CommitLine(
                         onDeleteRemoteBranch = onDeleteRemoteBranch,
                         onCheckoutTag = onCheckoutTag,
                         onDeleteTag = onDeleteTag,
+                        onPushTag = onPushTag,
                         onRebaseBranch = onRebaseBranch,
                         onPushRemoteBranch = onPushToRemoteBranch,
                         onPullRemoteBranch = onPullFromRemoteBranch,
@@ -991,6 +1004,7 @@ fun CommitMessage(
     onRebaseBranch: (ref: Branch) -> Unit,
     onCheckoutTag: (tag: Tag) -> Unit,
     onDeleteTag: (tag: Tag) -> Unit,
+    onPushTag: (tag: Tag) -> Unit,
     onPushRemoteBranch: (ref: Branch) -> Unit,
     onPullRemoteBranch: (ref: Branch) -> Unit,
     onChangeDefaultUpstreamBranch: (ref: Branch) -> Unit,
@@ -1015,6 +1029,7 @@ fun CommitMessage(
                         color = nodeColor,
                         onCheckoutTag = { onCheckoutTag(tag) },
                         onDeleteTag = { onDeleteTag(tag) },
+                        onPushTag = { onPushTag(tag) },
                     )
                 }
 
@@ -1528,12 +1543,14 @@ fun TagChip(
     tag: Tag,
     onCheckoutTag: () -> Unit,
     onDeleteTag: () -> Unit,
+    onPushTag: () -> Unit,
     color: Color,
 ) {
     val contextMenuItemsList = {
         tagContextMenuItems(
             onCheckoutTag = onCheckoutTag,
             onDeleteTag = onDeleteTag,
+            onPushTag = onPushTag,
         )
     }
 

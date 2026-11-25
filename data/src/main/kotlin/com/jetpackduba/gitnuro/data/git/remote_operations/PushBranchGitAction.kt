@@ -59,9 +59,11 @@ class PushBranchGitAction @Inject constructor(
         }.bind()
 
 
-        if (tracking == null && remoteRefUpdate != null) {
-            // [remoteRefUpdate.trackingRefUpdate.localName] should have the following format: refs/remotes/REMOTE_NAME/BRANCH_NAME
-            val remoteBranchPathSplit = remoteRefUpdate.trackingRefUpdate.localName.split("/")
+        val trackingRefUpdate = remoteRefUpdate?.trackingRefUpdate
+
+        if (tracking == null && trackingRefUpdate != null) {
+            // [trackingRefUpdate.localName] should have the following format: refs/remotes/REMOTE_NAME/BRANCH_NAME
+            val remoteBranchPathSplit = trackingRefUpdate.localName.split("/")
             val remoteName = remoteBranchPathSplit.getOrNull(2)
             val remoteBranchName =
                 remoteBranchPathSplit.takeLast(max(0, remoteBranchPathSplit.count() - 3)).joinToString("/")
@@ -163,6 +165,10 @@ class PushBranchGitAction @Inject constructor(
             throw Exception(error.toString())
         }
 
-        return@withContext pushResult.firstOrNull()?.remoteUpdates?.firstOrNull()
+        val remoteUpdates = pushResult.flatMap { it.remoteUpdates }
+
+        // When pushing tags, the remote updates also include the tags, so look for the update of the pushed branch
+        return@withContext remoteUpdates.firstOrNull { it.srcRef == git.repository.fullBranch }
+            ?: remoteUpdates.firstOrNull { !it.srcRef.orEmpty().startsWith(Constants.R_TAGS) }
     }
 }

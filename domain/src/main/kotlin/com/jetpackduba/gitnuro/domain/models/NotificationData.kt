@@ -48,6 +48,7 @@ fun TaskType.successTitle(): String? {
         TaskType.CreateTag -> "Tag created"
         TaskType.CheckoutTag -> "Tag checked out"
         TaskType.DeleteTag -> "Tag deleted"
+        TaskType.PushTag -> "Tag pushed"
         TaskType.AddSubmodule -> "Submodule added"
         TaskType.DeleteSubmodule -> "Submodule deleted"
         TaskType.InitSubmodule -> "Submodule initialized"

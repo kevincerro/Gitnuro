@@ -322,7 +322,8 @@ fun LazyListScope.tags(
                 isSelected = selectedItem is SelectedItem.TagItem && selectedItem.tag == tag,
                 onTagClicked = { viewModel.selectTag(tag) },
                 onCheckoutTag = { viewModel.checkoutTagCommit(tag) },
-                onDeleteTag = { viewModel.deleteTag(tag) }
+                onDeleteTag = { viewModel.deleteTag(tag) },
+                onPushTag = { viewModel.pushTag(tag) },
             )
         }
     }
@@ -559,12 +560,14 @@ private fun Tag(
     onTagClicked: () -> Unit,
     onCheckoutTag: () -> Unit,
     onDeleteTag: () -> Unit,
+    onPushTag: () -> Unit,
 ) {
     ContextMenu(
         items = {
             tagContextMenuItems(
                 onCheckoutTag = onCheckoutTag,
                 onDeleteTag = onDeleteTag,
+                onPushTag = onPushTag,
             )
         }
     ) {

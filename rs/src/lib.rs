@@ -243,8 +243,12 @@ fn remove_temporary_files(changes: &mut HashMap<FileChanged, Vec<EventKind>>) ->
             // we don't care about it as it's a temporary file.
             // If a file has been first removed and then created, then it shouldn't be marked as
             // temporary file.
+            // Some backends (e.g. FSEvents on macOS) accumulate flags for a path, so a file saved
+            // atomically by an editor can report Create + Remove even if it still exists. Only
+            // treat it as temporary when it no longer exists on disk.
             if let (Some(index_created), Some(index_removed)) = (index_created, index_removed)
                 && index_created < index_removed
+                && !Path::new(&key.path).exists()
             {
                 println!(
                     "Removing entry {} as it looks like a temporary file.",

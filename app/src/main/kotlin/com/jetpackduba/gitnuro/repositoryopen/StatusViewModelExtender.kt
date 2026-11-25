@@ -62,6 +62,7 @@ class StatusViewModelExtender @AssistedInject constructor(
     @Assisted private val onAlternateShowAsTree: () -> Unit,
     @Assisted("addCloseableView") private val addCloseableView: (CloseableView) -> Unit,
     @Assisted("removeCloseableView") private val removeCloseableView: (CloseableView) -> Unit,
+    @Assisted private val onCommitWithoutRemainingChanges: (Commit) -> Unit,
 ) : CoroutineScope by viewModelScope {
 
     @AssistedFactory
@@ -77,6 +78,7 @@ class StatusViewModelExtender @AssistedInject constructor(
             onAlternateShowAsTree: () -> Unit,
             @Assisted("addCloseableView") addCloseableView: (CloseableView) -> Unit,
             @Assisted("removeCloseableView") removeCloseableView: (CloseableView) -> Unit,
+            onCommitWithoutRemainingChanges: (Commit) -> Unit,
         ): StatusViewModelExtender
     }
 
@@ -621,6 +623,11 @@ class StatusViewModelExtender @AssistedInject constructor(
 
         val personIdent = getIdentity()
 
+        // Unstaged files are not affected by the commit, so if there are none now, there won't be any uncommitted
+        // changes left after committing. This has to be checked before committing, as the status is refreshed
+        // asynchronously once the commit has finished.
+        val hasUnstagedFiles = statusState.value.hasUnstagedFiles
+
         // If someone clicks on commit before persisting the message (as it has a delay), cancel it.
         val hadOngoingPersistJob = persistMessageJob?.isActive == true
         persistMessageJob?.cancelAndJoin()
@@ -630,6 +637,10 @@ class StatusViewModelExtender @AssistedInject constructor(
         if (doCommitResult is Either.Ok) {
             updateCommitMessage(TextFieldValue(""))
             isAmend.value = false
+
+            if (!hasUnstagedFiles) {
+                onCommitWithoutRemainingChanges(doCommitResult.value)
+            }
         } else {
             // If committing failed and the message was going to be persisted before the commit, restart the
             // persistence task
