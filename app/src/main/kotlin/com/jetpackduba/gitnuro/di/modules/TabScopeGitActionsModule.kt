@@ -21,6 +21,7 @@ import com.jetpackduba.gitnuro.data.git.stash.*
 import com.jetpackduba.gitnuro.data.git.submodules.*
 import com.jetpackduba.gitnuro.data.git.tags.CreateTagGitAction
 import com.jetpackduba.gitnuro.data.git.tags.DeleteTagGitAction
+import com.jetpackduba.gitnuro.data.git.tags.PushTagGitAction
 import com.jetpackduba.gitnuro.data.git.tags.GetTagsGitAction
 import com.jetpackduba.gitnuro.data.git.workspace.*
 import com.jetpackduba.gitnuro.data.log.GetFileCommitsAction
@@ -135,6 +136,10 @@ interface TabScopeGitActionsModule {
     @Binds
     @TabScope
     fun bindsDeleteTagGitAction(action: DeleteTagGitAction): IDeleteTagGitAction
+
+    @Binds
+    @TabScope
+    fun bindsPushTagGitAction(action: PushTagGitAction): IPushTagGitAction
 
     @Binds
     @TabScope

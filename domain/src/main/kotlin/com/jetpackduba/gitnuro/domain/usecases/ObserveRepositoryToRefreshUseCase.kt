@@ -12,14 +12,20 @@ import com.jetpackduba.gitnuro.domain.interfaces.IGetStatusGitAction
 import com.jetpackduba.gitnuro.domain.models.WatcherEvent
 import com.jetpackduba.gitnuro.domain.repositories.RepositoryDataRepository
 import com.jetpackduba.gitnuro.domain.repositories.RepositoryStateRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 
 private const val TAG = "ObserveRepositoryToRefreshUseCase"
 
 private const val REFRESH_TIME_SINCE_LAST_OPERATION = 1_500L
+private const val PENDING_REFRESH_RETRY_DELAY = 250L
 
 class ObserveRepositoryToRefreshUseCase @Inject constructor(
     private val tabCoroutineScope: TabCoroutineScope,
@@ -39,11 +45,38 @@ class ObserveRepositoryToRefreshUseCase @Inject constructor(
     operator fun invoke() {
         // TODO add some logging?
         val repositoryPath = repositoryDataRepository.repositoryPath ?: return
+        val gitDirPrefix = repositoryPath.removeSuffix(systemSeparator) + systemSeparator
+
+        // null means no pending refresh. true/false indicates if the git dir has changed (requiring a full refresh)
+        val pendingRefresh = AtomicReference<Boolean?>(null)
+        val refreshSignal = Channel<Unit>(Channel.CONFLATED)
+
         tabCoroutineScope.launch {
             val worktreeDir = getWorktreeUseCase().okOrNull() ?: return@launch
+
+            // Changes detected while another operation is running (or right after it) used to be dropped, which caused
+            // the status and log to become outdated until a manual refresh/fetch was triggered. Instead, keep them as
+            // pending and refresh once it's safe to do so.
+            launch {
+                for (signal in refreshSignal) {
+                    while (!canRefreshData()) {
+                        delay(PENDING_REFRESH_RETRY_DELAY)
+                    }
+
+                    val hasGitDirChanged = pendingRefresh.getAndSet(null) ?: continue
+
+                    if (hasGitDirChanged) {
+                        refreshDataUseCase(DataToRefresh.ALL).join()
+                    } else {
+                        refreshDataUseCase(DataToRefresh.STATUS, DataToRefresh.LOG, DataToRefresh.REPO_STATE).join()
+                    }
+                }
+            }
+
             launch {
                 fileChangesWatcher
                     .observeEvents()
+                    .flowOn(Dispatchers.IO)
                     .collect { event ->
                         when (event) {
                             is WatcherEvent.ChangesDetected -> {
@@ -51,7 +84,7 @@ class ObserveRepositoryToRefreshUseCase @Inject constructor(
                                 // Remove probe files that may temporarily be created by JGit
                                 val changes = event.changes
                                     .filter {
-                                        !it.path.startsWith("${repositoryPath.removeSuffix("/")}/.probe-")
+                                        !it.path.startsWith("${gitDirPrefix}.probe-")
                                     }
 
                                 if (changes.isEmpty()) {
@@ -60,29 +93,24 @@ class ObserveRepositoryToRefreshUseCase @Inject constructor(
 
                                 printDebug(TAG, "Changes detected: ${changes.toList()}")
 
-                                if (canRefreshData()) {
-                                    val containsOnlyEditMessageChanges = changes.all {
-                                        it.path == "$repositoryPath/${GitConstants.COMMIT_MSG}" ||
-                                                it.path == "$repositoryPath/${GitConstants.MERGE_MSG}" ||
-                                                it.path == "$repositoryPath/${GitConstants.SQUASH_MSG}"
-                                    }
-
-                                    if (containsOnlyEditMessageChanges) {
-                                        return@collect
-                                    }
-                                    
-                                    val hasGitDirChanged = changes.any { it.path.startsWith(repositoryPath) }
-
-                                    updateWatchedDirectories(event, repositoryPath, worktreeDir + systemSeparator)
-
-                                    if (hasGitDirChanged) {
-                                        refreshDataUseCase(DataToRefresh.ALL)
-                                    } else {
-                                        refreshDataUseCase(DataToRefresh.STATUS, DataToRefresh.LOG, DataToRefresh.REPO_STATE)
-                                    }
-                                } else {
-                                    printDebug(TAG, "Ignoring detected changes because the time diff since last change is too short or currently running other tasks")
+                                val containsOnlyEditMessageChanges = changes.all {
+                                    it.path == "$gitDirPrefix${GitConstants.COMMIT_MSG}" ||
+                                            it.path == "$gitDirPrefix${GitConstants.MERGE_MSG}" ||
+                                            it.path == "$gitDirPrefix${GitConstants.SQUASH_MSG}"
                                 }
+
+                                if (containsOnlyEditMessageChanges) {
+                                    return@collect
+                                }
+
+                                val hasGitDirChanged = changes.any {
+                                    it.path == repositoryPath || it.path.startsWith(gitDirPrefix)
+                                }
+
+                                updateWatchedDirectories(event, repositoryPath, worktreeDir + systemSeparator)
+
+                                pendingRefresh.updateAndGet { previous -> (previous ?: false) || hasGitDirChanged }
+                                refreshSignal.trySend(Unit)
                             }
 
                             is WatcherEvent.WatchInitError -> {
@@ -164,10 +192,10 @@ class ObserveRepositoryToRefreshUseCase @Inject constructor(
                         fileChangesWatcher.addPathToWatch(dir.path, false)
                     }
                 }
+            }
 
-                for (dir in removedDirs) {
-                    fileChangesWatcher.removePathFromWatch(dir.path)
-                }
+            for (dir in removedDirs) {
+                fileChangesWatcher.removePathFromWatch(dir.path)
             }
         }
     }

@@ -267,10 +267,15 @@ fun MainContentView(
         }
     }
 
+    // When nothing is selected (e.g. after committing all the changes), hide the right side panel so the log graph
+    // takes the available space. Selecting a commit or the uncommitted changes shows it again.
+    val isThirdPaneHidden = selectedItem is SelectedItem.None &&
+            rebaseInteractiveState !is RebaseInteractiveState.AwaitingInteraction
+
     TripleVerticalSplitPanel(
         modifier = Modifier.fillMaxSize(),
         firstWidth = if (rebaseInteractiveState is RebaseInteractiveState.AwaitingInteraction) 0f else firstWidth,
-        thirdWidth = thirdWidth,
+        thirdWidth = if (isThirdPaneHidden) 0f else thirdWidth,
         first = {
             SidePanel(
                 viewModel = viewModel,
